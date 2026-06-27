@@ -1,0 +1,10 @@
+node_modules/
+*.log
+.DS_Store
+.env
+uploads/*
+!uploads/.gitkeep
+build_entries.js
+_build_entries.js
+*.tmp
+*.bak

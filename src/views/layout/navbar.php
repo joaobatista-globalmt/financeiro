@@ -3,10 +3,11 @@
  * Layout: navbar superior
  *
  * Mostra menu principal + dropdown de empresa.
+ * Usa $currentUser (vem do layout()) em vez de $usuario pra não colidir
+ * com $usuario de controllers (ex: UsuarioController::form()).
  */
-$usuario = $usuario ?? Auth::user();
-$perfil  = $perfil  ?? Auth::perfilAtual();
-$empresaId = (int)($usuario['empresa_id'] ?? 0);
+$perfil     = $perfil ?? Auth::perfilAtual();
+$empresaId  = (int)($currentUser['empresa_id'] ?? 0);
 ?>
 <nav class="navbar">
     <div class="navbar-brand">
@@ -53,20 +54,23 @@ $empresaId = (int)($usuario['empresa_id'] ?? 0);
         <?php endif; ?>
     </ul>
     <div class="navbar-right">
-        <?php if (!empty($_SESSION['empresas']) && count($_SESSION['empresas']) > 1): ?>
+        <?php if (!empty($_SESSION['empresas'])): ?>
         <form method="post" action="trocar-empresa.php" class="empresa-dropdown">
-            <select name="empresa_id" onchange="this.form.submit()">
-                <?php foreach ($_SESSION['empresas'] as $emp): ?>
-                    <option value="<?= (int)$emp['empresa_id'] ?>"
-                        <?= (int)$emp['empresa_id'] === $empresaId ? 'selected' : '' ?>>
-                        <?= htmlspecialchars($emp['nome_fantasia'] ?: $emp['razao_social']) ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
+            <label class="empresa-label" title="Empresa ativa">
+                🏢
+                <select name="empresa_id" onchange="this.form.submit()" <?= count($_SESSION['empresas']) === 1 ? 'disabled' : '' ?>>
+                    <?php foreach ($_SESSION['empresas'] as $emp): ?>
+                        <option value="<?= (int)$emp['empresa_id'] ?>"
+                            <?= (int)$emp['empresa_id'] === $empresaId ? 'selected' : '' ?>>
+                            <?= htmlspecialchars($emp['nome_fantasia'] ?: $emp['razao_social']) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </label>
         </form>
         <?php endif; ?>
         <span class="user-info">
-            <?= htmlspecialchars($usuario['nome'] ?? '') ?>
+            <?= htmlspecialchars($currentUser['nome'] ?? '') ?>
             <small>(<?= htmlspecialchars($perfil) ?>)</small>
         </span>
         <a href="logout.php" class="btn btn-sm">Sair</a>

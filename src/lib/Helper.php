@@ -57,10 +57,13 @@ function view(string $caminho, array $vars = []): void
  */
 function layout(string $titulo, string $view, array $vars = []): void
 {
-    $usuario = Auth::user();
-    $flash = Flash::get();
+    // Extrai PRIMEIRO para que $vars do controller sobrescreva $usuario/$empresa, etc
+    extract($vars, EXTR_OVERWRITE);
 
-    extract($vars, EXTR_SKIP);
+    // Depois pega dados do usuário logado para o navbar/header
+    // Usa variáveis com prefixo _ pra não colidir com as do controller
+    $currentUser = Auth::user();
+    $currentFlash = Flash::get();
 
     require FINANCEIRO_SRC . '/views/layout/header.php';
     require FINANCEIRO_SRC . '/views/layout/navbar.php';

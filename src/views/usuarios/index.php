@@ -36,6 +36,32 @@
                 <td class="actions">
                     <?php if (Permissao::tem('gerenciar_usuarios')): ?>
                         <a href="usuario_form.php?id=<?= (int)$u['id'] ?>" class="btn btn-sm">Editar</a>
+
+                        <?php if ($u['id'] !== (int)Auth::user()['id']): ?>
+                            <?php if ($u['ativo']): ?>
+                                <form method="post" action="usuario_acao.php" style="display:inline"
+                                      onsubmit="return confirm('Desativar este usuário? Ele não poderá mais fazer login.')">
+                                    <input type="hidden" name="id" value="<?= (int)$u['id'] ?>">
+                                    <input type="hidden" name="acao" value="desativar">
+                                    <button type="submit" class="btn btn-sm">Desativar</button>
+                                </form>
+                            <?php else: ?>
+                                <form method="post" action="usuario_acao.php" style="display:inline">
+                                    <input type="hidden" name="id" value="<?= (int)$u['id'] ?>">
+                                    <input type="hidden" name="acao" value="ativar">
+                                    <button type="submit" class="btn btn-sm btn-success">Ativar</button>
+                                </form>
+                            <?php endif; ?>
+
+                            <?php if (Permissao::tem('excluir')): ?>
+                                <form method="post" action="usuario_acao.php" style="display:inline"
+                                      onsubmit="return confirm('EXCLUIR DEFINITIVAMENTE este usuário?\n\nEsta ação não pode ser desfeita!\n\nTodos os vínculos com empresas também serão removidos.')">
+                                    <input type="hidden" name="id" value="<?= (int)$u['id'] ?>">
+                                    <input type="hidden" name="acao" value="excluir">
+                                    <button type="submit" class="btn btn-sm btn-danger">Excluir</button>
+                                </form>
+                            <?php endif; ?>
+                        <?php endif; ?>
                     <?php endif; ?>
                 </td>
             </tr>

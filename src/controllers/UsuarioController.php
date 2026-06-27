@@ -180,7 +180,7 @@ final class UsuarioController
         $acao = $_POST['acao'] ?? '';
 
         if ($id <= 0 || $id === (int)Auth::user()['id']) {
-            Flash::set('erro', 'Operação inválida.');
+            Flash::set('erro', 'Operação inválida. Você não pode modificar seu próprio usuário por aqui.');
             redirect('usuarios.php');
         }
 
@@ -190,11 +190,31 @@ final class UsuarioController
             if ($acao === 'ativar') {
                 $stmt = $db->prepare('UPDATE usuarios SET ativo = 1 WHERE id = ?');
                 $stmt->execute([$id]);
-                Flash::set('sucesso', 'Usuário ativado.');
+                Flash::set('sucesso', 'Usuário ativado. Ele já pode fazer login novamente.');
             } elseif ($acao === 'desativar') {
                 $stmt = $db->prepare('UPDATE usuarios SET ativo = 0 WHERE id = ?');
                 $stmt->execute([$id]);
-                Flash::set('sucesso', 'Usuário desativado.');
+                Flash::set('sucesso', 'Usuário desativado. Ele não poderá mais fazer login até ser reativado.');
+            } elseif ($acao === 'excluir') {
+                Permissao::requer('excluir', 'usuarios.php');
+
+                // Verifica se há contas/registros vinculados (log opcional)
+                $stmtLog = $db->prepare('SELECT COUNT(*) AS total FROM log_operacoes WHERE usuario_id = ?');
+                $stmtLog->execute([$id]);
+                $temLog = $stmtLog->fetch()['total'] > 0;
+
+                if ($temLog) {
+                    // Tem log → inativa em vez de excluir (preserva histórico)
+                    $stmt = $db->prepare('UPDATE usuarios SET ativo = 0 WHERE id = ?');
+                    $stmt->execute([$id]);
+                    Flash::set('aviso', 'Usuário possui histórico de operações. Foi inativado em vez de excluído, para preservar a auditoria.');
+                } else {
+                    // Sem log → pode excluir com segurança
+                    // FK ON DELETE CASCADE remove os vínculos em usuarios_empresas
+                    $stmt = $db->prepare('DELETE FROM usuarios WHERE id = ?');
+                    $stmt->execute([$id]);
+                    Flash::set('sucesso', 'Usuário excluído definitivamente.');
+                }
             } else {
                 Flash::set('erro', 'Ação inválida.');
             }

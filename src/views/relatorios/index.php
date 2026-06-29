@@ -28,6 +28,11 @@
         <p>Entradas e saídas por dia, com saldo acumulado.</p>
     </a>
 
+    <a href="relatorio_extrato_conta_form.php" class="report-card">
+        <h3>📋 Extrato de Conta Bancária</h3>
+        <p>Movimentações detalhadas de uma conta específica, com saldo anterior, entradas, saídas e saldo final.</p>
+    </a>
+
     <a href="relatorio_show.php?tipo=atrasadas" class="report-card">
         <h3>⚠️ Atrasadas</h3>
         <p>Contas vencidas e não pagas/recebidas, ordenadas por dias de atraso.</p>

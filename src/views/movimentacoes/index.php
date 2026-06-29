@@ -11,6 +11,7 @@
     <h1>📊 Extrato: <?= htmlspecialchars($conta['descricao']) ?></h1>
     <div>
         <a href="movimentacao_form.php?conta_id=<?= (int)$conta['id'] ?>" class="btn btn-primary">+ Lançamento Manual</a>
+        <a href="relatorio_show.php?tipo=extrato_conta&conta_id=<?= (int)$conta['id'] ?>&data_inicio=<?= urlencode($filtros['data_inicio']) ?>&data_fim=<?= urlencode($filtros['data_fim']) ?>" class="btn">📊 Relatório</a>
         <a href="contas_bancarias.php" class="btn">← Voltar</a>
     </div>
 </div>

@@ -65,6 +65,27 @@ body {
     position: relative;
 }
 
+/* Dropdown de ação no header de páginas (botão azul com seta) */
+.page-action-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.page-action-dropdown .dropdown-toggle {
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.page-action-dropdown .dropdown-toggle::after {
+    content: " ▾";
+    font-size: 11px;
+}
+
+.dropdown-menu.dropdown-menu-right {
+    left: auto;
+    right: 0;
+}
+
 .navbar-menu > li > a {
     padding: 8px 12px;
     color: var(--color-text);

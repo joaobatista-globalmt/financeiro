@@ -2,7 +2,13 @@
 <div class="page-header">
     <h1>💳 Contas Bancárias</h1>
     <?php if (Permissao::tem('criar')): ?>
-        <a href="conta_bancaria_form.php" class="btn btn-primary">+ Nova Conta</a>
+        <div class="dropdown page-action-dropdown">
+            <button type="button" class="btn btn-primary dropdown-toggle">+ Novo ▾</button>
+            <ul class="dropdown-menu dropdown-menu-right">
+                <li><a href="conta_bancaria_form.php">💳 Nova Conta Bancária</a></li>
+                <li><a href="movimentacao_selecionar_conta.php">💸 Lançamento Manual</a></li>
+            </ul>
+        </div>
     <?php endif; ?>
 </div>
 

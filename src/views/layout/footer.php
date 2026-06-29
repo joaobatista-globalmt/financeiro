@@ -2,6 +2,6 @@
 <footer class="footer">
     <small>© <?= date('Y') ?> Sistema Financeiro — v1.0 (<?= date('d/m/Y H:i') ?>)</small>
 </footer>
-<script src="assets/financeiro.js"></script>
+<script src="assets/financeiro.js?v=2"></script>
 </body>
 </html>

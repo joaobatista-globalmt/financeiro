@@ -74,3 +74,32 @@ document.addEventListener('DOMContentLoaded', function() {
         el.addEventListener('input', e => e.target.value = maskTelefone(e.target.value));
     });
 });
+
+// Dropdown toggle: funciona no click também (hover já é tratado via CSS,
+// mas em mobile/tablet hover não dispara, então abrimos via JS).
+document.addEventListener('click', function(e) {
+    const toggle = e.target.closest('.dropdown-toggle');
+    if (toggle) {
+        e.preventDefault();
+        const dropdown = toggle.closest('.dropdown');
+        if (dropdown) {
+            // Fecha outros dropdowns abertos
+            document.querySelectorAll('.dropdown.open').forEach(d => {
+                if (d !== dropdown) d.classList.remove('open');
+            });
+            dropdown.classList.toggle('open');
+        }
+        return;
+    }
+    // Click fora fecha o dropdown
+    if (!e.target.closest('.dropdown')) {
+        document.querySelectorAll('.dropdown.open').forEach(d => d.classList.remove('open'));
+    }
+});
+
+// ESC fecha dropdown aberto
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        document.querySelectorAll('.dropdown.open').forEach(d => d.classList.remove('open'));
+    }
+});

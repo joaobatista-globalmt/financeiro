@@ -12,7 +12,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><?= htmlspecialchars($titulo ?? 'Financeiro') ?> - Financeiro</title>
-    <link rel="stylesheet" href="assets/financeiro.css?v=2">
+    <link rel="stylesheet" href="assets/financeiro.css?v=3">
 </head>
 <body>
     <?php if (!empty($flash)): ?>

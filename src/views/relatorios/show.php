@@ -43,8 +43,42 @@
     <?php if (!empty($dados['totais'])): ?>
     <tfoot>
         <tr class="report-total-row">
-            <?php foreach ($dados['totais']['cells'] as $cell): ?>
-                <th class="report-total-cell"><?= htmlspecialchars((string)$cell) ?></th>
+            <?php
+            $cells = $dados['totais']['cells'];
+            $label = $dados['totais']['label'];
+            // Remove o label "TOTAL" do in\u00edcio
+            array_shift($cells);
+            // 1\u00aa string n\u00e3o-vazia \u00e9 subLabel (geralmente "Σ X categorias")
+            // O 1\u00ba NUM\u00c9RICO \u00e9 o ponto de virada: tudo antes dele vai pro colspan
+            $subLabel = '';
+            $values = [];
+            $firstValueIdx = -1;
+            foreach ($cells as $i => $c) {
+                $cv = (string)$c;
+                if ($cv === '') continue;
+                if ($firstValueIdx === -1) {
+                    if (is_numeric(str_replace([',','.',' '], '', $cv))) {
+                        $firstValueIdx = $i;
+                        $values[] = $cv;
+                    } else {
+                        $subLabel = $cv;
+                    }
+                } else {
+                    $values[] = $cv;
+                }
+            }
+            // colspan = (headers - values count) garante alinhamento perfeito
+            $colspan = count($dados['headers']) - count($values);
+            $colspan = max(1, $colspan);
+            ?>
+            <th class="report-total-cell" colspan="<?= $colspan ?>" style="text-align:left; padding-left:12px;">
+                <?= htmlspecialchars($label) ?>
+                <?php if ($subLabel !== ''): ?>
+                    <span style="opacity:.75; font-weight:400; font-size:11px; margin-left:6px;"><?= htmlspecialchars($subLabel) ?></span>
+                <?php endif; ?>
+            </th>
+            <?php foreach ($values as $v): ?>
+                <th class="report-total-cell" style="text-align:right;"><?= htmlspecialchars($v) ?></th>
             <?php endforeach; ?>
         </tr>
     </tfoot>
@@ -59,10 +93,16 @@
     foreach ($dados['totais']['cells'] as $idx => $cell) {
         $cell = (string)$cell;
         if ($cell === '' || $cell === null) continue;
-        // Pega o cabeçalho correspondente se possível e faz sentido como card
-        $header = $dados['headers'][$idx] ?? '';
-        // Não vira card se for o "rótulo" Σ X (resumo) — só valores numéricos formatados
+        // Pula o label "TOTAL" (cells[0])
+        if ($idx === 0 && $cell === $label) continue;
+        // Pula strings "Σ X" (sub-resumo, já fica no colspan)
         if (preg_match('/^Σ /', $cell)) continue;
+        // Pula "TOTAL" duplicado em qualquer posição
+        if (strtoupper($cell) === 'TOTAL') continue;
+        // Pula "máx:" (tá no rodapé)
+        if (strpos($cell, 'máx:') === 0) continue;
+        // Só mostra cards com valores numéricos ou formatados (R$, etc)
+        $header = $dados['headers'][$idx] ?? '';
         $cards[] = ['header' => $header, 'value' => $cell];
     }
     ?>

@@ -820,9 +820,35 @@ final class RelatorioController
         $slug = preg_replace('/[^a-z0-9]/', '_', strtolower($tipo));
         $rows = $dados['rows'];
         if (!empty($dados['totais'])) {
-            // Injeta linha em branco + linha de total
             $rows[] = array_fill(0, count($dados['headers']), '');
-            $rows[] = $dados['totais']['cells'];
+            $cells = $dados['totais']['cells'];
+            $label = $dados['totais']['label'];
+            array_shift($cells);
+            $subLabel = '';
+            $values = [];
+            $firstValueIdx = -1;
+            foreach ($cells as $i => $c) {
+                $cv = (string)$c;
+                if ($cv === '') continue;
+                if ($firstValueIdx === -1) {
+                    if (is_numeric(str_replace([',','.',' '], '', $cv))) {
+                        $firstValueIdx = $i;
+                        $values[] = $cv;
+                    } else {
+                        $subLabel = $cv;
+                    }
+                } else {
+                    $values[] = $cv;
+                }
+            }
+            $colspan = count($dados['headers']) - count($values);
+            $colspan = max(1, $colspan);
+            $linha = array_fill(0, count($dados['headers']), '');
+            $linha[0] = $label . ($subLabel ? ' ' . $subLabel : '');
+            for ($i = 0; $i < count($values) && ($colspan + $i) < count($linha); $i++) {
+                $linha[$colspan + $i] = $values[$i];
+            }
+            $rows[] = $linha;
         }
         CsvExporter::download("relatorio_$slug", $dados['headers'], $rows);
     }
@@ -908,10 +934,38 @@ final class RelatorioController
         $html .= '</tbody>';
 
         if (!empty($dados['totais'])) {
+            $cells = $dados['totais']['cells'];
+            $label = $dados['totais']['label'];
+            array_shift($cells);
+            $subLabel = '';
+            $values = [];
+            $firstValueIdx = -1;
+            foreach ($cells as $i => $c) {
+                $cv = (string)$c;
+                if ($cv === '') continue;
+                if ($firstValueIdx === -1) {
+                    if (is_numeric(str_replace([',','.',' '], '', $cv))) {
+                        $firstValueIdx = $i;
+                        $values[] = $cv;
+                    } else {
+                        $subLabel = $cv;
+                    }
+                } else {
+                    $values[] = $cv;
+                }
+            }
+            $colspan = count($dados['headers']) - count($values);
+            $colspan = max(1, $colspan);
+            
             $html .= '<tfoot><tr class="total-row">';
-            // cells[0] j\u00e1 cont\u00e9m o label; demais s\u00e3o os valores
-            foreach ($dados['totais']['cells'] as $cell) {
-                $html .= '<th>' . htmlspecialchars((string)$cell) . '</th>';
+            $html .= '<th colspan="' . $colspan . '" style="text-align:left; padding-left:8px;">';
+            $html .= htmlspecialchars($label);
+            if ($subLabel !== '') {
+                $html .= ' <span style="opacity:.75; font-weight:400; font-size:9px;">' . htmlspecialchars($subLabel) . '</span>';
+            }
+            $html .= '</th>';
+            foreach ($values as $v) {
+                $html .= '<th style="text-align:right;">' . htmlspecialchars($v) . '</th>';
             }
             $html .= '</tr></tfoot>';
         }

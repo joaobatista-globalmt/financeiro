@@ -207,6 +207,14 @@ final class RelatorioController
         $stmt->execute([$empresaId, $dataInicio, $dataFim, $empresaId, $dataInicio, $dataFim]);
         $rows = $stmt->fetchAll();
 
+        // Calcular totais (somatório em float, formatado no final)
+        $totalValor = 0.0;
+        $totalPago  = 0.0;
+        foreach ($rows as $r) {
+            $totalValor += (float)$r['valor'];
+            $totalPago  += (float)($r['valor_pago'] ?? 0);
+        }
+
         return [
             'titulo'  => 'Contas por Período',
             'headers' => ['Vencimento', 'Descrição', 'Entidade', 'Categoria', 'Tipo', 'Valor', 'Valor Pago/Recebido', 'Status'],
@@ -223,6 +231,19 @@ final class RelatorioController
                     $r['status'],
                 ];
             }, $rows),
+            'totais'  => [
+                'label' => 'TOTAL',
+                'cells' => [
+                    'TOTAL', // Tipo (substitui o cabeçalho da 1ª coluna)
+                    'Σ ' . count($rows) . ' contas',
+                    '', // Entidade
+                    '', // Categoria
+                    '', // Tipo
+                    number_format($totalValor, 2, ',', '.'),
+                    number_format($totalPago, 2, ',', '.'),
+                    '', // Status
+                ],
+            ],
         ];
     }
 
@@ -255,6 +276,16 @@ final class RelatorioController
         $stmt->execute([$empresaId, $dataInicio, $dataFim, $empresaId, $dataInicio, $dataFim]);
         $rows = $stmt->fetchAll();
 
+        // Totais
+        $totalQtd      = 0;
+        $totalPendente = 0.0;
+        $totalPago     = 0.0;
+        foreach ($rows as $r) {
+            $totalQtd      += (int)$r['qtd'];
+            $totalPendente += (float)$r['total_pendente'];
+            $totalPago     += (float)$r['total_pago'];
+        }
+
         return [
             'titulo'  => 'Por Categoria',
             'headers' => ['Tipo', 'Categoria', 'Qtd', 'Pendente', 'Pago/Recebido'],
@@ -267,6 +298,16 @@ final class RelatorioController
                     number_format((float)$r['total_pago'], 2, ',', '.'),
                 ];
             }, $rows),
+            'totais'  => [
+                'label' => 'TOTAL',
+                'cells' => [
+                    'TOTAL',
+                    'Σ ' . count($rows) . ' categorias',
+                    (string)$totalQtd,
+                    number_format($totalPendente, 2, ',', '.'),
+                    number_format($totalPago, 2, ',', '.'),
+                ],
+            ],
         ];
     }
 
@@ -288,6 +329,16 @@ final class RelatorioController
         $stmt->execute([$empresaId, $dataInicio, $dataFim]);
         $rows = $stmt->fetchAll();
 
+        // Totais
+        $totalQtd      = 0;
+        $totalPendente = 0.0;
+        $totalPago     = 0.0;
+        foreach ($rows as $r) {
+            $totalQtd      += (int)$r['qtd'];
+            $totalPendente += (float)$r['total_pendente'];
+            $totalPago     += (float)$r['total_pago'];
+        }
+
         return [
             'titulo'  => 'Por Fornecedor',
             'headers' => ['Fornecedor', 'CNPJ', 'Qtd', 'Pendente', 'Pago'],
@@ -300,6 +351,16 @@ final class RelatorioController
                     number_format((float)$r['total_pago'], 2, ',', '.'),
                 ];
             }, $rows),
+            'totais'  => [
+                'label' => 'TOTAL',
+                'cells' => [
+                    'TOTAL',
+                    'Σ ' . count($rows) . ' fornecedores',
+                    (string)$totalQtd,
+                    number_format($totalPendente, 2, ',', '.'),
+                    number_format($totalPago, 2, ',', '.'),
+                ],
+            ],
         ];
     }
 
@@ -321,6 +382,16 @@ final class RelatorioController
         $stmt->execute([$empresaId, $dataInicio, $dataFim]);
         $rows = $stmt->fetchAll();
 
+        // Totais
+        $totalQtd       = 0;
+        $totalPendente  = 0.0;
+        $totalRecebido  = 0.0;
+        foreach ($rows as $r) {
+            $totalQtd      += (int)$r['qtd'];
+            $totalPendente += (float)$r['total_pendente'];
+            $totalRecebido += (float)$r['total_recebido'];
+        }
+
         return [
             'titulo'  => 'Por Cliente',
             'headers' => ['Cliente', 'CPF/CNPJ', 'Qtd', 'Pendente', 'Recebido'],
@@ -333,6 +404,16 @@ final class RelatorioController
                     number_format((float)$r['total_recebido'], 2, ',', '.'),
                 ];
             }, $rows),
+            'totais'  => [
+                'label' => 'TOTAL',
+                'cells' => [
+                    'TOTAL',
+                    'Σ ' . count($rows) . ' clientes',
+                    (string)$totalQtd,
+                    number_format($totalPendente, 2, ',', '.'),
+                    number_format($totalRecebido, 2, ',', '.'),
+                ],
+            ],
         ];
     }
 
@@ -354,10 +435,16 @@ final class RelatorioController
         $rows = $stmt->fetchAll();
 
         $saldoAcumulado = 0;
+        $totalEntradas  = 0.0;
+        $totalSaidas    = 0.0;
         foreach ($rows as &$r) {
             $saldoAcumulado += (float)$r['saldo_dia'];
             $r['saldo_acumulado'] = $saldoAcumulado;
+            $totalEntradas += (float)$r['entradas'];
+            $totalSaidas   += (float)$r['saidas'];
         }
+        unset($r);
+        $saldoPeriodo = $totalEntradas - $totalSaidas;
 
         return [
             'titulo'  => 'Fluxo de Caixa',
@@ -371,6 +458,17 @@ final class RelatorioController
                     number_format((float)$r['saldo_acumulado'], 2, ',', '.'),
                 ];
             }, $rows),
+            'totais'  => [
+                'label' => 'TOTAL DO PERÍODO',
+                'cells' => [
+                    'TOTAL',
+                    'Σ ' . count($rows) . ' dias',
+                    number_format($totalEntradas, 2, ',', '.'),
+                    number_format($totalSaidas, 2, ',', '.'),
+                    number_format($saldoPeriodo, 2, ',', '.'),
+                    number_format($saldoAcumulado, 2, ',', '.'),
+                ],
+            ],
         ];
     }
 
@@ -400,6 +498,16 @@ final class RelatorioController
         $stmt->execute([$hoje, $empresaId, $hoje, $hoje, $empresaId, $hoje]);
         $rows = $stmt->fetchAll();
 
+        // Totais: qtd + valor
+        $totalValor   = 0.0;
+        $maxAtraso    = 0;
+        foreach ($rows as $r) {
+            $totalValor += (float)$r['valor'];
+            if ((int)$r['dias_atraso'] > $maxAtraso) {
+                $maxAtraso = (int)$r['dias_atraso'];
+            }
+        }
+
         return [
             'titulo'  => 'Contas Atrasadas',
             'headers' => ['Tipo', 'Vencimento', 'Descrição', 'Entidade', 'Categoria', 'Valor', 'Dias Atraso'],
@@ -414,6 +522,18 @@ final class RelatorioController
                     $r['dias_atraso'],
                 ];
             }, $rows),
+            'totais'  => [
+                'label' => 'TOTAL ATRASADO',
+                'cells' => [
+                    'TOTAL',
+                    '', // Vencimento
+                    'Σ ' . count($rows) . ' contas',
+                    '', // Entidade
+                    '', // Categoria
+                    number_format($totalValor, 2, ',', '.'),
+                    'máx: ' . $maxAtraso,
+                ],
+            ],
         ];
     }
 
@@ -698,7 +818,13 @@ final class RelatorioController
     private function exportarCsv(string $tipo, array $dados): void
     {
         $slug = preg_replace('/[^a-z0-9]/', '_', strtolower($tipo));
-        CsvExporter::download("relatorio_$slug", $dados['headers'], $dados['rows']);
+        $rows = $dados['rows'];
+        if (!empty($dados['totais'])) {
+            // Injeta linha em branco + linha de total
+            $rows[] = array_fill(0, count($dados['headers']), '');
+            $rows[] = $dados['totais']['cells'];
+        }
+        CsvExporter::download("relatorio_$slug", $dados['headers'], $rows);
     }
 
     private function exportarPdf(string $tipo, array $dados, string $dataInicio, string $dataFim): void
@@ -753,6 +879,7 @@ final class RelatorioController
             th, td { border: 1px solid #ccc; padding: 6px; text-align: left; }
             th { background: #f5f5f5; font-weight: bold; }
             tr:nth-child(even) { background: #fafafa; }
+            .total-row th { background: #2563eb; color: #fff; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px; }
         </style></head><body>';
 
         $html .= '<h1>' . htmlspecialchars($dados['titulo']) . '</h1>';
@@ -778,7 +905,18 @@ final class RelatorioController
             }
         }
 
-        $html .= '</tbody></table></body></html>';
+        $html .= '</tbody>';
+
+        if (!empty($dados['totais'])) {
+            $html .= '<tfoot><tr class="total-row">';
+            // cells[0] j\u00e1 cont\u00e9m o label; demais s\u00e3o os valores
+            foreach ($dados['totais']['cells'] as $cell) {
+                $html .= '<th>' . htmlspecialchars((string)$cell) . '</th>';
+            }
+            $html .= '</tr></tfoot>';
+        }
+
+        $html .= '</table></body></html>';
 
         return $html;
     }

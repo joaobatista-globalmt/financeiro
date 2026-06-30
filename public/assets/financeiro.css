@@ -651,3 +651,54 @@ fieldset.payment-section legend {
     color: var(--color-text-muted);
     font-size: 13px;
 }
+
+/* === REPORT TOTALS (linha de totais nos relatórios) === */
+.report-total-row {
+    background: var(--color-primary);
+    color: #fff;
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 12px;
+    letter-spacing: 0.5px;
+}
+.report-total-row th {
+    padding: 10px 12px;
+    border-color: var(--color-primary-dark, #1e40af);
+}
+.report-total-cell {
+    background: var(--color-primary);
+    color: #fff !important;
+    text-align: left;
+}
+
+.report-total-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin-top: 20px;
+    padding: 16px;
+    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+    border-radius: 8px;
+    border: 1px solid var(--color-border);
+}
+.report-total-card {
+    background: var(--color-surface);
+    padding: 12px 16px;
+    border-radius: 6px;
+    border-left: 4px solid var(--color-primary);
+    box-shadow: var(--shadow-sm);
+}
+.report-total-card-label {
+    font-size: 11px;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+    font-weight: 600;
+}
+.report-total-card-value {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--color-primary);
+    font-variant-numeric: tabular-nums;
+}

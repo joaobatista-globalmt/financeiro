@@ -24,9 +24,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="utf-8">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - Sistema Financeiro</title>
     <link rel="stylesheet" href="assets/financeiro.css">
+    <style>
+        .forgot-link {
+            display: block;
+            text-align: center;
+            margin-top: 14px;
+            color: var(--color-text-muted);
+            font-size: 13px;
+            text-decoration: none;
+            transition: color .15s;
+        }
+        .forgot-link:hover {
+            color: var(--color-primary);
+            text-decoration: underline;
+        }
+    </style>
 </head>
 <body class="login-page">
     <div class="login-box">
@@ -48,6 +64,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
             <button type="submit" class="btn btn-primary btn-block">Entrar</button>
         </form>
+
+        <a href="reset.php?action=forgot" class="forgot-link">🔑 Esqueci minha senha</a>
     </div>
 </body>
 </html>

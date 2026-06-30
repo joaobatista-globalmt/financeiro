@@ -24,7 +24,8 @@ final class CnaeServicoController
         $apenasAtivos = ($_GET['apenas_ativos'] ?? '1') !== '0';
 
         $sql = '
-            SELECT id, cnae, codigo_servico, descricao, categoria, ativo,
+            SELECT id, cnae, codigo_servico, descricao, categoria, ativo, nbs, lc116_item,
+                   regime_ibs, local_operacao, observacoes_fiscais,
                    DATE_FORMAT(created_at, "%Y-%m-%d %H:%i") AS criado_em
             FROM cnae_servicos
             WHERE empresa_id = ?
@@ -70,12 +71,17 @@ final class CnaeServicoController
         $id = (int)($_GET['id'] ?? 0);
 
         $servico = [
-            'id'             => 0,
-            'cnae'           => '',
-            'codigo_servico' => '',
-            'descricao'      => '',
-            'categoria'      => 'telecom',
-            'ativo'          => 1,
+            'id'                  => 0,
+            'cnae'                => '',
+            'codigo_servico'      => '',
+            'descricao'           => '',
+            'categoria'           => 'telecom',
+            'ativo'               => 1,
+            'nbs'                 => '',
+            'lc116_item'          => '',
+            'regime_ibs'          => 'normal',
+            'local_operacao'      => 'tomador',
+            'observacoes_fiscais' => '',
         ];
 
         if ($id > 0) {
@@ -108,6 +114,11 @@ final class CnaeServicoController
         $descricao     = trim((string)($_POST['descricao'] ?? ''));
         $categoria     = trim((string)($_POST['categoria'] ?? ''));
         $ativo         = isset($_POST['ativo']) ? 1 : 0;
+        $nbs           = trim((string)($_POST['nbs'] ?? ''));
+        $lc116Item     = trim((string)($_POST['lc116_item'] ?? ''));
+        $regimeIbs     = trim((string)($_POST['regime_ibs'] ?? 'normal'));
+        $localOperacao = trim((string)($_POST['local_operacao'] ?? 'tomador'));
+        $obsFiscais    = trim((string)($_POST['observacoes_fiscais'] ?? ''));
 
         // Validação
         $erros = [];
@@ -122,6 +133,15 @@ final class CnaeServicoController
         if (!in_array($categoria, ['telecom', 'ti', 'dados', 'info'], true)) {
             $erros[] = 'Categoria inválida.';
         }
+        if ($nbs !== '' && !preg_match('/^\d{1,2}\.\d{2}\.\d{2}\.\d{2}$/', $nbs)) {
+            $erros[] = 'NBS inválido (formato: G.GG.GG.GG).';
+        }
+        if (!in_array($regimeIbs, ['normal', 'especifico'], true)) {
+            $regimeIbs = 'normal';
+        }
+        if (!in_array($localOperacao, ['tomador', 'prestador'], true)) {
+            $localOperacao = 'tomador';
+        }
         if (!empty($erros)) {
             redirect('cnae_servico_form.php' . ($id ? '?id=' . $id : ''), 'erro', implode(' ', $erros));
         }
@@ -130,18 +150,23 @@ final class CnaeServicoController
             // UPDATE
             $stmt = $db->prepare('
                 UPDATE cnae_servicos
-                SET cnae = ?, codigo_servico = ?, descricao = ?, categoria = ?, ativo = ?
+                SET cnae = ?, codigo_servico = ?, descricao = ?, categoria = ?, ativo = ?,
+                    nbs = ?, lc116_item = ?, regime_ibs = ?, local_operacao = ?, observacoes_fiscais = ?
                 WHERE id = ? AND empresa_id = ?
             ');
-            $stmt->execute([$cnae, $codigoServico ?: null, $descricao, $categoria, $ativo, $id, $empresaId]);
+            $stmt->execute([$cnae, $codigoServico ?: null, $descricao, $categoria, $ativo,
+                            $nbs ?: null, $lc116Item ?: null, $regimeIbs, $localOperacao, $obsFiscais ?: null,
+                            $id, $empresaId]);
             redirect('cnae_servicos_listar.php', 'ok', 'Serviço atualizado com sucesso.');
         } else {
             // INSERT
             $stmt = $db->prepare('
-                INSERT INTO cnae_servicos (empresa_id, cnae, codigo_servico, descricao, categoria, ativo)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO cnae_servicos (empresa_id, cnae, codigo_servico, descricao, categoria, ativo,
+                                           nbs, lc116_item, regime_ibs, local_operacao, observacoes_fiscais)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ');
-            $stmt->execute([$empresaId, $cnae, $codigoServico ?: null, $descricao, $categoria, $ativo]);
+            $stmt->execute([$empresaId, $cnae, $codigoServico ?: null, $descricao, $categoria, $ativo,
+                            $nbs ?: null, $lc116Item ?: null, $regimeIbs, $localOperacao, $obsFiscais ?: null]);
             redirect('cnae_servicos_listar.php', 'ok', 'Serviço criado com sucesso.');
         }
     }
@@ -192,5 +217,21 @@ final class CnaeServicoController
         } else {
             redirect('cnae_servicos_listar.php', 'erro', 'Serviço não encontrado.');
         }
+    }
+
+    /**
+     * Lista as regras de tributação IBS/CBS por grupo NBS.
+     * Mostra a tabela `ibs_cbs_regras` (global, não por empresa).
+     */
+    public function regrasIbsCbs(): void
+    {
+        Auth::require();
+        $db = Database::getConnection();
+        $stmt = $db->query('SELECT * FROM ibs_cbs_regras ORDER BY nbs_grupo');
+        $regras = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        layout('Regras IBS/CBS — Reforma Tributária', 'cnae/regras_ibs_cbs.php', [
+            'regras' => $regras,
+        ]);
     }
 }

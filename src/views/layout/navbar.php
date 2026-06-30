@@ -36,6 +36,7 @@ $empresaId  = (int)($currentUser['empresa_id'] ?? 0);
                 <li><a href="fornecedores.php">Fornecedores</a></li>
                 <li><a href="clientes.php">Clientes</a></li>
                 <li><a href="categorias.php">Categorias</a></li>
+                <li><a href="cnae_servicos_listar.php">Tipos de Serviços (CNAE)</a></li>
             </ul>
         </li>
         <li><a href="relatorios.php">Relatórios</a></li>

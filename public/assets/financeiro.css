@@ -704,3 +704,24 @@ fieldset.payment-section legend {
     color: var(--color-primary);
     font-variant-numeric: tabular-nums;
 }
+
+
+/* === BADGES (para CNAE categoria, status, etc) === */
+.badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: white;
+}
+.badge-telecom { background: #2563eb; }
+.badge-ti      { background: #0891b2; }
+.badge-dados   { background: #7c3aed; }
+.badge-info    { background: #db2777; }
+.badge-success { background: var(--color-success); }
+.badge-warning { background: var(--color-warning); }
+.badge-danger  { background: var(--color-danger); }
+.badge-default { background: var(--color-text-muted); }

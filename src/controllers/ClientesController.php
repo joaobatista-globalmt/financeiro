@@ -3,6 +3,10 @@
  * ClientesController - CRUD de clientes (para Contas a Receber)
  *
  * Espelho do FornecedoresController, mas para a tabela `clientes`.
+ * Inclui:
+ *  - Campos de vencimento (dia + tipo)
+ *  - Flags emite_nfse / emite_boleto
+ *  - Listas de e-mails separados por tipo (cliente_emails_nfse / cliente_emails_boleto)
  */
 
 declare(strict_types=1);
@@ -17,7 +21,9 @@ final class ClientesController
         $db = Database::getConnection();
         $stmt = $db->prepare('
             SELECT c.*,
-                   (SELECT COUNT(*) FROM contas_receber WHERE cliente_id = c.id) AS total_contas
+                   (SELECT COUNT(*) FROM contas_receber WHERE cliente_id = c.id) AS total_contas,
+                   (SELECT COUNT(*) FROM cliente_emails_nfse WHERE cliente_id = c.id) AS qtd_emails_nfse,
+                   (SELECT COUNT(*) FROM cliente_emails_boleto WHERE cliente_id = c.id) AS qtd_emails_boleto
             FROM clientes c
             WHERE c.empresa_id = ?
             ORDER BY c.ativo DESC, c.razao_social
@@ -61,6 +67,7 @@ final class ClientesController
         $empresaId = Auth::user()['empresa_id'];
         $id = (int)($_POST['id'] ?? 0);
 
+        // Validações
         if (empty(trim($_POST['razao_social'] ?? ''))) {
             Flash::set('erro', 'Razão social é obrigatória.');
             redirect($id > 0 ? "cliente_form.php?id=$id" : 'cliente_form.php');
@@ -70,53 +77,78 @@ final class ClientesController
             redirect($id > 0 ? "cliente_form.php?id=$id" : 'cliente_form.php');
         }
 
+        // Coleta dados básicos
         $dados = [
-            'razao_social'  => trim($_POST['razao_social']),
-            'nome_fantasia' => trim($_POST['nome_fantasia'] ?? '') ?: null,
-            'cpf_cnpj'      => trim($_POST['cpf_cnpj'] ?? '') ?: null,
-            'tipo_pessoa'   => $_POST['tipo_pessoa'],
-            'endereco'      => trim($_POST['endereco'] ?? '') ?: null,
-            'cidade'        => trim($_POST['cidade'] ?? '') ?: null,
-            'uf'            => strtoupper(trim($_POST['uf'] ?? '')) ?: null,
-            'cep'           => trim($_POST['cep'] ?? '') ?: null,
-            'telefone'      => trim($_POST['telefone'] ?? '') ?: null,
-            'email'         => trim($_POST['email'] ?? '') ?: null,
-            'contato'       => trim($_POST['contato'] ?? '') ?: null,
-            'observacoes'   => trim($_POST['observacoes'] ?? '') ?: null,
-            'ativo'         => isset($_POST['ativo']) ? 1 : 1,
+            'razao_social'    => trim($_POST['razao_social']),
+            'nome_fantasia'   => trim($_POST['nome_fantasia'] ?? '') ?: null,
+            'cpf_cnpj'        => trim($_POST['cpf_cnpj'] ?? '') ?: null,
+            'tipo_pessoa'     => $_POST['tipo_pessoa'],
+            'endereco'        => trim($_POST['endereco'] ?? '') ?: null,
+            'cidade'          => trim($_POST['cidade'] ?? '') ?: null,
+            'uf'              => strtoupper(trim($_POST['uf'] ?? '')) ?: null,
+            'cep'             => trim($_POST['cep'] ?? '') ?: null,
+            'telefone'        => trim($_POST['telefone'] ?? '') ?: null,
+            'email'           => trim($_POST['email'] ?? '') ?: null,
+            'contato'         => trim($_POST['contato'] ?? '') ?: null,
+            'observacoes'     => trim($_POST['observacoes'] ?? '') ?: null,
         ];
+
+        // Campos novos
+        $diaVenc = $_POST['dia_vencimento'] ?? '';
+        $dados['dia_vencimento'] = ($diaVenc !== '' && (int)$diaVenc >= 1 && (int)$diaVenc <= 31) ? (int)$diaVenc : null;
+
+        $tipoVenc = $_POST['tipo_vencimento'] ?? '';
+        $dados['tipo_vencimento'] = in_array($tipoVenc, ['mes_corrente', 'mes_seguinte'], true) ? $tipoVenc : null;
+
+        $dados['emite_nfse']   = isset($_POST['emite_nfse'])   ? 1 : 0;
+        $dados['emite_boleto'] = isset($_POST['emite_boleto']) ? 1 : 0;
+        $dados['ativo']        = isset($_POST['ativo'])        ? 1 : 0;
+
+        // E-mails NFSe/Boleto
+        $emailsNfse   = $this->coletarEmails($_POST['emails_nfse']   ?? []);
+        $emailsBoleto = $this->coletarEmails($_POST['emails_boleto'] ?? []);
 
         $db = Database::getConnection();
 
         try {
+            $db->beginTransaction();
+
             if ($id > 0) {
-                $dados['ativo'] = isset($_POST['ativo']) ? 1 : 0;
-                $stmt = $db->prepare('
-                    UPDATE clientes SET
-                        razao_social=:razao_social, nome_fantasia=:nome_fantasia, cpf_cnpj=:cpf_cnpj,
-                        tipo_pessoa=:tipo_pessoa, endereco=:endereco, cidade=:cidade, uf=:uf,
-                        cep=:cep, telefone=:telefone, email=:email, contato=:contato,
-                        observacoes=:observacoes, ativo=:ativo
-                    WHERE id=:id AND empresa_id=:empresa_id
-                ');
+                $sql = 'UPDATE clientes SET
+                            razao_social=:razao_social, nome_fantasia=:nome_fantasia, cpf_cnpj=:cpf_cnpj,
+                            tipo_pessoa=:tipo_pessoa, endereco=:endereco, cidade=:cidade, uf=:uf,
+                            cep=:cep, telefone=:telefone, email=:email, contato=:contato,
+                            observacoes=:observacoes, ativo=:ativo,
+                            dia_vencimento=:dia_vencimento, tipo_vencimento=:tipo_vencimento,
+                            emite_nfse=:emite_nfse, emite_boleto=:emite_boleto
+                        WHERE id=:id AND empresa_id=:empresa_id';
+                $stmt = $db->prepare($sql);
                 $dados['id'] = $id;
                 $dados['empresa_id'] = $empresaId;
                 $stmt->execute($dados);
-                Flash::set('sucesso', 'Cliente atualizado.');
             } else {
+                $sql = 'INSERT INTO clientes
+                            (empresa_id, razao_social, nome_fantasia, cpf_cnpj, tipo_pessoa,
+                             endereco, cidade, uf, cep, telefone, email, contato, observacoes, ativo,
+                             dia_vencimento, tipo_vencimento, emite_nfse, emite_boleto)
+                        VALUES
+                            (:empresa_id, :razao_social, :nome_fantasia, :cpf_cnpj, :tipo_pessoa,
+                             :endereco, :cidade, :uf, :cep, :telefone, :email, :contato, :observacoes, :ativo,
+                             :dia_vencimento, :tipo_vencimento, :emite_nfse, :emite_boleto)';
+                $stmt = $db->prepare($sql);
                 $dados['empresa_id'] = $empresaId;
-                $stmt = $db->prepare('
-                    INSERT INTO clientes
-                        (empresa_id, razao_social, nome_fantasia, cpf_cnpj, tipo_pessoa,
-                         endereco, cidade, uf, cep, telefone, email, contato, observacoes, ativo)
-                    VALUES
-                        (:empresa_id, :razao_social, :nome_fantasia, :cpf_cnpj, :tipo_pessoa,
-                         :endereco, :cidade, :uf, :cep, :telefone, :email, :contato, :observacoes, :ativo)
-                ');
                 $stmt->execute($dados);
-                Flash::set('sucesso', 'Cliente criado.');
+                $id = (int)$db->lastInsertId();
             }
+
+            // Atualizar listas de e-mails
+            $this->salvarEmails($db, $id, 'cliente_emails_nfse',   $emailsNfse);
+            $this->salvarEmails($db, $id, 'cliente_emails_boleto', $emailsBoleto);
+
+            $db->commit();
+            Flash::set('sucesso', $id > 0 ? 'Cliente atualizado.' : 'Cliente criado.');
         } catch (PDOException $e) {
+            $db->rollBack();
             error_log('[Clientes] Erro: ' . $e->getMessage());
             Flash::set('erro', 'Erro ao salvar cliente.');
         }
@@ -124,51 +156,61 @@ final class ClientesController
         redirect('clientes.php');
     }
 
+    /**
+     * Coleta e valida e-mails do POST, removendo vazios/duplicados.
+     * @return string[] Lista de e-mails válidos
+     */
+    private function coletarEmails(array $lista): array
+    {
+        $validos = [];
+        foreach ($lista as $email) {
+            $email = trim((string)$email);
+            if ($email === '') continue;
+            if (filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                $validos[] = strtolower($email);
+            }
+        }
+        return array_values(array_unique($validos));
+    }
+
+    /**
+     * Substitui a lista de e-mails de um cliente (estratégia: delete all + insert).
+     * @param string $tabela Nome da tabela (cliente_emails_nfse ou cliente_emails_boleto)
+     */
+    private function salvarEmails(\PDO $db, int $clienteId, string $tabela, array $emails): void
+    {
+        $del = $db->prepare("DELETE FROM $tabela WHERE cliente_id = ?");
+        $del->execute([$clienteId]);
+
+        if (empty($emails)) return;
+
+        $ins = $db->prepare("INSERT INTO $tabela (cliente_id, email) VALUES (?, ?)");
+        foreach ($emails as $email) {
+            $ins->execute([$clienteId, $email]);
+        }
+    }
+
     public function acao(): void
     {
         Auth::require();
         Permissao::requer('excluir', 'clientes.php');
-
-        $id = (int)($_POST['id'] ?? 0);
-        $acao = $_POST['acao'] ?? '';
         $empresaId = Auth::user()['empresa_id'];
-
-        if ($id <= 0) {
-            Flash::set('erro', 'ID inválido.');
-            redirect('clientes.php');
-        }
+        $acao = $_POST['acao'] ?? $_GET['acao'] ?? '';
+        $id = (int)($_POST['id'] ?? $_GET['id'] ?? 0);
 
         $db = Database::getConnection();
 
-        try {
-            if ($acao === 'excluir') {
-                $stmtCheck = $db->prepare('SELECT COUNT(*) AS total FROM contas_receber WHERE cliente_id = ?');
-                $stmtCheck->execute([$id]);
-                $temContas = $stmtCheck->fetch()['total'] > 0;
-
-                if ($temContas) {
-                    $stmt = $db->prepare('UPDATE clientes SET ativo = 0 WHERE id = ? AND empresa_id = ?');
-                    $stmt->execute([$id, $empresaId]);
-                    Flash::set('aviso', 'Cliente possui contas. Foi inativado em vez de excluído.');
-                } else {
-                    $stmt = $db->prepare('DELETE FROM clientes WHERE id = ? AND empresa_id = ?');
-                    $stmt->execute([$id, $empresaId]);
-                    Flash::set('sucesso', 'Cliente excluído.');
-                }
-            } elseif ($acao === 'ativar') {
-                $stmt = $db->prepare('UPDATE clientes SET ativo = 1 WHERE id = ? AND empresa_id = ?');
-                $stmt->execute([$id, $empresaId]);
-                Flash::set('sucesso', 'Cliente ativado.');
-            } elseif ($acao === 'desativar') {
-                $stmt = $db->prepare('UPDATE clientes SET ativo = 0 WHERE id = ? AND empresa_id = ?');
-                $stmt->execute([$id, $empresaId]);
-                Flash::set('sucesso', 'Cliente desativado.');
-            } else {
-                Flash::set('erro', 'Ação inválida.');
-            }
-        } catch (PDOException $e) {
-            error_log('[Clientes] Erro: ' . $e->getMessage());
-            Flash::set('erro', 'Erro ao executar ação.');
+        if ($acao === 'excluir' && $id > 0) {
+            $stmt = $db->prepare('DELETE FROM clientes WHERE id = ? AND empresa_id = ?');
+            $stmt->execute([$id, $empresaId]);
+            // E-mails relacionados são excluídos via CASCADE
+            Flash::set('sucesso', 'Cliente excluído.');
+        } elseif ($acao === 'toggle' && $id > 0) {
+            $stmt = $db->prepare('UPDATE clientes SET ativo = NOT ativo WHERE id = ? AND empresa_id = ?');
+            $stmt->execute([$id, $empresaId]);
+            Flash::set('sucesso', 'Status alterado.');
+        } else {
+            Flash::set('erro', 'Ação inválida.');
         }
 
         redirect('clientes.php');

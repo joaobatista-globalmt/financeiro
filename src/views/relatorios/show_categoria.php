@@ -100,18 +100,14 @@ $totalCategorias = count($grupos);
         </thead>
         <tbody>
             <?php foreach ($grupos as $catId => $g):
-                // Cor da categoria (fundo suave, cor de borda/texto forte)
-                $corFundo = '#f9fafb'; // default
+                // Cor da categoria (apenas no título)
                 $corBorda = '#9ca3af';
                 $corTexto = '#1f2937';
                 if (!empty($g['cor']) && preg_match('/^#[0-9A-Fa-f]{6}$/', $g['cor'])) {
-                    // Cria fundo bem claro a partir da cor
+                    $corBorda = $g['cor'];
                     $r = hexdec(substr($g['cor'], 1, 2));
                     $gr = hexdec(substr($g['cor'], 3, 2));
                     $b = hexdec(substr($g['cor'], 5, 2));
-                    $corFundo = sprintf('#%02x%02x%02x', $r, $gr, $b);
-                    $corBorda = $g['cor'];
-                    // Texto: escuro se fundo claro, branco se escuro
                     $luminancia = (0.299 * $r + 0.587 * $gr + 0.114 * $b) / 255;
                     $corTexto = $luminancia > 0.6 ? '#1f2937' : '#ffffff';
                 }
@@ -130,7 +126,7 @@ $totalCategorias = count($grupos);
                 <!-- Linhas da categoria (em ordem cronológica) -->
                 <?php foreach ($g['rows_idx'] as $idx): ?>
                     <?php $row = $rows[$idx]; ?>
-                    <tr style="background: <?= $corFundo ?>;">
+                    <tr>
                         <?php
                         $rowShow = $row;
                         unset($rowShow['__raw__']);

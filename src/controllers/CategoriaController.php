@@ -60,13 +60,19 @@ final class CategoriaController
         $empresaId = Auth::user()['empresa_id'];
         $id = (int)($_POST['id'] ?? 0);
 
+        // Suporte a retorno para tela de origem (ex: conta_form.php) com seleção automática
+        $returnTo = preg_match('/^[a-z0-9_]+$/', (string)($_GET['return'] ?? '')) ? $_GET['return'] : '';
+        $returnSelect = preg_match('/^[a-z0-9_]+$/', (string)($_GET['select'] ?? '')) ? $_GET['select'] : '';
+
         if (empty(trim($_POST['nome'] ?? ''))) {
             Flash::set('erro', 'Nome é obrigatório.');
-            redirect($id > 0 ? "categoria_form.php?id=$id" : 'categoria_form.php');
+            $back = $returnTo ? $returnTo : ($id > 0 ? "categoria_form.php?id=$id" : 'categoria_form.php');
+            redirect($back);
         }
         if (!in_array($_POST['tipo'] ?? '', ['despesa', 'receita', 'ambos'], true)) {
             Flash::set('erro', 'Tipo inválido.');
-            redirect($id > 0 ? "categoria_form.php?id=$id" : 'categoria_form.php');
+            $back = $returnTo ? $returnTo : ($id > 0 ? "categoria_form.php?id=$id" : 'categoria_form.php');
+            redirect($back);
         }
 
         $dados = [
@@ -97,7 +103,20 @@ final class CategoriaController
                     VALUES (:empresa_id, :nome, :tipo, :cor, :descricao, :ativo)
                 ');
                 $stmt->execute($dados);
+                $novoId = (int)$db->lastInsertId();
                 Flash::set('sucesso', 'Categoria criada.');
+
+                // Se veio de outra tela (ex: conta_form), volta via view intermediária (cross-window)
+                // pra preservar dados da janela pai (não causa reload)
+                if ($returnTo && $novoId > 0) {
+                    $query = http_build_query([
+                        'tipo'   => 'categoria',
+                        'select' => $returnSelect,
+                        'id'     => $novoId,
+                        'label'  => $dados['nome'],
+                    ]);
+                    redirect('_criar_filho_sucesso.php?' . $query);
+                }
             }
         } catch (PDOException $e) {
             error_log('[Categoria] Erro: ' . $e->getMessage());

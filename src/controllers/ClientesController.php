@@ -67,14 +67,32 @@ final class ClientesController
         $empresaId = Auth::user()['empresa_id'];
         $id = (int)($_POST['id'] ?? 0);
 
+        // Suporte a retorno para tela de origem (ex: conta_receber_form.php) com seleção automática
+        $returnTo = preg_match('/^[a-z0-9_]+$/', (string)($_GET['return'] ?? '')) ? $_GET['return'] : '';
+        $returnSelect = preg_match('/^[a-z0-9_]+$/', (string)($_GET['select'] ?? '')) ? $_GET['select'] : '';
+
         // Validações
         if (empty(trim($_POST['razao_social'] ?? ''))) {
             Flash::set('erro', 'Razão social é obrigatória.');
-            redirect($id > 0 ? "cliente_form.php?id=$id" : 'cliente_form.php');
+            $back = $returnTo ? $returnTo : ($id > 0 ? "cliente_form.php?id=$id" : 'cliente_form.php');
+            redirect($back);
         }
         if (!in_array($_POST['tipo_pessoa'] ?? '', ['F', 'J'], true)) {
             Flash::set('erro', 'Tipo de pessoa inválido.');
-            redirect($id > 0 ? "cliente_form.php?id=$id" : 'cliente_form.php');
+            $back = $returnTo ? $returnTo : ($id > 0 ? "cliente_form.php?id=$id" : 'cliente_form.php');
+            redirect($back);
+        }
+
+        // Validação da chave PIX (se informada)
+        $pixTipo  = $_POST['pix_tipo'] ?? '';
+        $pixChave = trim((string)($_POST['pix_chave'] ?? ''));
+        $tiposPixValidos = ['cpf', 'cnpj', 'email', 'telefone', 'aleatoria'];
+        if ($pixTipo !== '' && !in_array($pixTipo, $tiposPixValidos, true)) {
+            $pixTipo = '';
+        }
+        if ($pixChave === '' || $pixTipo === '') {
+            $pixChave = '';
+            $pixTipo = '';
         }
 
         // Coleta dados básicos
@@ -91,6 +109,8 @@ final class ClientesController
             'email'           => trim($_POST['email'] ?? '') ?: null,
             'contato'         => trim($_POST['contato'] ?? '') ?: null,
             'observacoes'     => trim($_POST['observacoes'] ?? '') ?: null,
+            'pix_chave'       => $pixChave ?: null,
+            'pix_tipo'        => $pixTipo ?: null,
         ];
 
         // Campos novos
@@ -113,6 +133,7 @@ final class ClientesController
         try {
             $db->beginTransaction();
 
+            $novoId = 0;
             if ($id > 0) {
                 $sql = 'UPDATE clientes SET
                             razao_social=:razao_social, nome_fantasia=:nome_fantasia, cpf_cnpj=:cpf_cnpj,
@@ -120,33 +141,49 @@ final class ClientesController
                             cep=:cep, telefone=:telefone, email=:email, contato=:contato,
                             observacoes=:observacoes, ativo=:ativo,
                             dia_vencimento=:dia_vencimento, tipo_vencimento=:tipo_vencimento,
-                            emite_nfse=:emite_nfse, emite_boleto=:emite_boleto
+                            emite_nfse=:emite_nfse, emite_boleto=:emite_boleto,
+                            pix_chave=:pix_chave, pix_tipo=:pix_tipo
                         WHERE id=:id AND empresa_id=:empresa_id';
                 $stmt = $db->prepare($sql);
                 $dados['id'] = $id;
                 $dados['empresa_id'] = $empresaId;
                 $stmt->execute($dados);
+                $novoId = $id;
             } else {
                 $sql = 'INSERT INTO clientes
                             (empresa_id, razao_social, nome_fantasia, cpf_cnpj, tipo_pessoa,
                              endereco, cidade, uf, cep, telefone, email, contato, observacoes, ativo,
-                             dia_vencimento, tipo_vencimento, emite_nfse, emite_boleto)
+                             dia_vencimento, tipo_vencimento, emite_nfse, emite_boleto,
+                             pix_chave, pix_tipo)
                         VALUES
                             (:empresa_id, :razao_social, :nome_fantasia, :cpf_cnpj, :tipo_pessoa,
                              :endereco, :cidade, :uf, :cep, :telefone, :email, :contato, :observacoes, :ativo,
-                             :dia_vencimento, :tipo_vencimento, :emite_nfse, :emite_boleto)';
+                             :dia_vencimento, :tipo_vencimento, :emite_nfse, :emite_boleto,
+                             :pix_chave, :pix_tipo)';
                 $stmt = $db->prepare($sql);
                 $dados['empresa_id'] = $empresaId;
                 $stmt->execute($dados);
-                $id = (int)$db->lastInsertId();
+                $novoId = (int)$db->lastInsertId();
             }
 
             // Atualizar listas de e-mails
-            $this->salvarEmails($db, $id, 'cliente_emails_nfse',   $emailsNfse);
-            $this->salvarEmails($db, $id, 'cliente_emails_boleto', $emailsBoleto);
+            $this->salvarEmails($db, $novoId, 'cliente_emails_nfse',   $emailsNfse);
+            $this->salvarEmails($db, $novoId, 'cliente_emails_boleto', $emailsBoleto);
 
             $db->commit();
             Flash::set('sucesso', $id > 0 ? 'Cliente atualizado.' : 'Cliente criado.');
+
+            // Se veio de outra tela e é criação, volta via view intermediária (cross-window)
+            // pra preservar dados da janela pai (não causa reload)
+            if ($returnTo && $id === 0 && $novoId > 0) {
+                $query = http_build_query([
+                    'tipo'   => 'cliente',
+                    'select' => $returnSelect,
+                    'id'     => $novoId,
+                    'label'  => $dados['razao_social'],
+                ]);
+                redirect('_criar_filho_sucesso.php?' . $query);
+            }
         } catch (PDOException $e) {
             $db->rollBack();
             error_log('[Clientes] Erro: ' . $e->getMessage());

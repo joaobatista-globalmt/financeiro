@@ -12,13 +12,27 @@ if ($cliente) {
     $s->execute([$cliente['id']]);
     $emailsBoleto = array_column($s->fetchAll(PDO::FETCH_ASSOC), 'email');
 }
+
+// Suporte a retorno para tela de origem (ex: conta_receber_form.php) com seleção automática
+// Aceita nomes como "conta_form", "conta_receber_form", "clientes" (com ou sem .php)
+$returnTo     = preg_match('/^[a-z0-9_]+$/', (string)($_GET['return'] ?? '')) ? $_GET['return'] : '';
+$returnSelect = preg_match('/^[a-z0-9_]+$/', (string)($_GET['select'] ?? '')) ? $_GET['select'] : '';
+
+// Propaga ?return=...&select=... no action do form
+$actionForm = 'cliente_salvar.php' . ($returnTo ? '?return=' . rawurlencode($returnTo) . '&select=' . rawurlencode($returnSelect) : '');
 ?>
 <div class="page-header">
     <h1><?= $cliente ? 'Editar' : 'Novo' ?> Cliente</h1>
-    <a href="clientes.php" class="btn">Voltar</a>
+    <a href="<?= $returnTo ?: 'clientes.php' ?>" class="btn">Voltar</a>
 </div>
 
-<form method="post" action="cliente_salvar.php" class="form" id="cliente-form">
+<?php if ($returnTo): ?>
+    <div class="alert alert-info" style="margin-bottom:12px;">
+        <strong>Modo criação rápida.</strong> Ao salvar, você voltará automaticamente para a tela de origem com este cliente selecionado.
+    </div>
+<?php endif; ?>
+
+<form method="post" action="<?= htmlspecialchars($actionForm) ?>" class="form" id="cliente-form">
     <input type="hidden" name="id" value="<?= (int)($cliente['id'] ?? 0) ?>">
 
     <fieldset>
@@ -176,6 +190,31 @@ if ($cliente) {
         <label>Observações</label>
         <textarea name="observacoes" rows="3"><?= htmlspecialchars($cliente['observacoes'] ?? '') ?></textarea>
     </div>
+
+    <fieldset class="form-section">
+        <legend>💠 Chave PIX</legend>
+        <div class="row">
+            <div class="form-group col-3">
+                <label>Tipo da Chave</label>
+                <select name="pix_tipo">
+                    <?php $pixTipoAtual = $cliente['pix_tipo'] ?? ''; ?>
+                    <option value="">— Nenhuma —</option>
+                    <option value="cpf"       <?= $pixTipoAtual === 'cpf'       ? 'selected' : '' ?>>CPF</option>
+                    <option value="cnpj"      <?= $pixTipoAtual === 'cnpj'      ? 'selected' : '' ?>>CNPJ</option>
+                    <option value="email"     <?= $pixTipoAtual === 'email'     ? 'selected' : '' ?>>E-mail</option>
+                    <option value="telefone"  <?= $pixTipoAtual === 'telefone'  ? 'selected' : '' ?>>Telefone</option>
+                    <option value="aleatoria" <?= $pixTipoAtual === 'aleatoria' ? 'selected' : '' ?>>Chave aleatória</option>
+                </select>
+            </div>
+            <div class="form-group col-9">
+                <label>Chave</label>
+                <input type="text" name="pix_chave" maxlength="255"
+                       value="<?= htmlspecialchars($cliente['pix_chave'] ?? '') ?>"
+                       placeholder="Ex: 123.456.789-00, email@exemplo.com, (65) 99999-9999, ou UUID">
+            </div>
+        </div>
+        <small class="muted">Informe o tipo e a chave PIX para receber pagamentos por transferência instantânea.</small>
+    </fieldset>
 
     <div class="form-group">
         <label>

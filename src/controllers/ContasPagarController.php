@@ -449,7 +449,7 @@ final class ContasPagarController
     private function listarFornecedores(int $empresaId): array
     {
         $db = Database::getConnection();
-        $stmt = $db->prepare('SELECT id, razao_social, cnpj FROM fornecedores WHERE empresa_id = ? AND ativo = 1 ORDER BY razao_social');
+        $stmt = $db->prepare('SELECT id, razao_social, cnpj, pix_chave, pix_tipo FROM fornecedores WHERE empresa_id = ? AND ativo = 1 ORDER BY razao_social');
         $stmt->execute([$empresaId]);
         return $stmt->fetchAll();
     }

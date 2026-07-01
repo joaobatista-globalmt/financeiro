@@ -456,7 +456,7 @@ final class ContasReceberController
     private function listarClientes(int $empresaId): array
     {
         $db = Database::getConnection();
-        $stmt = $db->prepare('SELECT id, razao_social, cpf_cnpj FROM clientes WHERE empresa_id = ? AND ativo = 1 ORDER BY razao_social');
+        $stmt = $db->prepare('SELECT id, razao_social, cpf_cnpj, pix_chave, pix_tipo FROM clientes WHERE empresa_id = ? AND ativo = 1 ORDER BY razao_social');
         $stmt->execute([$empresaId]);
         return $stmt->fetchAll();
     }

@@ -59,9 +59,28 @@ final class FornecedorController
         $empresaId = Auth::user()['empresa_id'];
         $id = (int)($_POST['id'] ?? 0);
 
+        // Suporte a retorno para tela de origem (ex: conta_form.php) com seleção automática
+        // Aceita nomes como "conta_form", "conta_receber_form", "fornecedores" (sem .php)
+        $returnTo = preg_match('/^[a-z0-9_]+$/', (string)($_GET['return'] ?? '')) ? $_GET['return'] : '';
+        $returnSelect = preg_match('/^[a-z0-9_]+$/', (string)($_GET['select'] ?? '')) ? $_GET['select'] : '';
+
         if (empty(trim($_POST['razao_social'] ?? ''))) {
             Flash::set('erro', 'Razão social é obrigatória.');
-            redirect($id > 0 ? "fornecedor_form.php?id=$id" : 'fornecedor_form.php');
+            $back = $returnTo ? $returnTo . ($returnSelect ? '?select=' . $returnSelect : '') : ($id > 0 ? "fornecedor_form.php?id=$id" : 'fornecedor_form.php');
+            redirect($back);
+        }
+
+        // Validação da chave PIX (se informada)
+        $pixTipo  = $_POST['pix_tipo'] ?? '';
+        $pixChave = trim((string)($_POST['pix_chave'] ?? ''));
+        $tiposPixValidos = ['cpf', 'cnpj', 'email', 'telefone', 'aleatoria'];
+        if ($pixTipo !== '' && !in_array($pixTipo, $tiposPixValidos, true)) {
+            $pixTipo = '';
+        }
+        if ($pixChave === '') {
+            $pixTipo = ''; // se não tem chave, não tem tipo
+        } elseif ($pixTipo === '') {
+            $pixChave = ''; // se não tem tipo, ignora chave
         }
 
         $dados = [
@@ -77,6 +96,8 @@ final class FornecedorController
             'email'              => trim($_POST['email'] ?? '') ?: null,
             'contato'            => trim($_POST['contato'] ?? '') ?: null,
             'observacoes'        => trim($_POST['observacoes'] ?? '') ?: null,
+            'pix_chave'          => $pixChave ?: null,
+            'pix_tipo'           => $pixTipo ?: null,
             'ativo'              => 1,
         ];
 
@@ -90,7 +111,7 @@ final class FornecedorController
                         razao_social=:razao_social, nome_fantasia=:nome_fantasia, cnpj=:cnpj,
                         inscricao_estadual=:inscricao_estadual, endereco=:endereco, cidade=:cidade,
                         uf=:uf, cep=:cep, telefone=:telefone, email=:email, contato=:contato,
-                        observacoes=:observacoes, ativo=:ativo
+                        observacoes=:observacoes, pix_chave=:pix_chave, pix_tipo=:pix_tipo, ativo=:ativo
                     WHERE id=:id AND empresa_id=:empresa_id
                 ');
                 $dados['id'] = $id;
@@ -102,19 +123,36 @@ final class FornecedorController
                 $stmt = $db->prepare('
                     INSERT INTO fornecedores
                         (empresa_id, razao_social, nome_fantasia, cnpj, inscricao_estadual,
-                         endereco, cidade, uf, cep, telefone, email, contato, observacoes, ativo)
+                         endereco, cidade, uf, cep, telefone, email, contato, observacoes,
+                         pix_chave, pix_tipo, ativo)
                     VALUES
                         (:empresa_id, :razao_social, :nome_fantasia, :cnpj, :inscricao_estadual,
-                         :endereco, :cidade, :uf, :cep, :telefone, :email, :contato, :observacoes, :ativo)
+                         :endereco, :cidade, :uf, :cep, :telefone, :email, :contato, :observacoes,
+                         :pix_chave, :pix_tipo, :ativo)
                 ');
                 $stmt->execute($dados);
+                $novoId = (int)$db->lastInsertId();
                 Flash::set('sucesso', 'Fornecedor criado.');
+
+                // Se veio de outra tela (ex: conta_form), volta pra lá com o novo ID + label
+                // Mas usa view intermediária (cross-window) pra preservar dados da janela pai
+                if ($returnTo && $novoId > 0) {
+                    $alvo = (str_ends_with($returnTo, '.php') ? $returnTo : $returnTo . '.php');
+                    $query = http_build_query([
+                        'tipo'   => 'fornecedor',
+                        'select' => $returnSelect,
+                        'id'     => $novoId,
+                        'label'  => $dados['razao_social'],
+                    ]);
+                    redirect('_criar_filho_sucesso.php?' . $query);
+                }
             }
         } catch (PDOException $e) {
             error_log('[Fornecedor] Erro: ' . $e->getMessage());
             Flash::set('erro', 'Erro ao salvar fornecedor.');
         }
 
+        // Fallback: vai pra lista (comportamento padrão existente)
         redirect('fornecedores.php');
     }
 

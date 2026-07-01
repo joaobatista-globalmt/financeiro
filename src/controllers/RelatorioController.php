@@ -1130,7 +1130,18 @@ final class RelatorioController
         $html .= '</tr></table>';
 
         // Tabela agrupada por data
-        $html .= '<table class="dados"><thead><tr>';
+        $html .= '<table class="dados">';
+        $html .= '<colgroup>';
+        $html .= '<col style="width:2.5cm;">';  // Vencimento
+        $html .= '<col style="width:5cm;">';    // Descrição (-1cm)
+        $html .= '<col style="width:4cm;">';    // Entidade
+        $html .= '<col style="width:3cm;">';    // Categoria
+        $html .= '<col style="width:2cm;">';    // Tipo (+1cm)
+        $html .= '<col style="width:2.8cm;">';  // Valor
+        $html .= '<col style="width:3cm;">';    // Valor Pago/Recebido
+        $html .= '<col style="width:2cm;">';    // Status
+        $html .= '</colgroup>';
+        $html .= '<thead><tr>';
         foreach ($headers as $h) $html .= '<th>' . htmlspecialchars($h) . '</th>';
         $html .= '</tr></thead><tbody>';
 

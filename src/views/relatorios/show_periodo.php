@@ -87,6 +87,16 @@ $temRegistros = ($totaisSeparados['pagar']['qtd'] + $totaisSeparados['receber'][
 
     <!-- Tabela agrupada por data -->
     <table class="table">
+        <colgroup>
+            <col style="width: 2.5cm;">  <!-- Vencimento -->
+            <col style="width: 5cm;">     <!-- Descrição (-1cm) -->
+            <col style="width: 4cm;">     <!-- Entidade -->
+            <col style="width: 3cm;">     <!-- Categoria -->
+            <col style="width: 2cm;">     <!-- Tipo (+1cm) -->
+            <col style="width: 2.8cm;">   <!-- Valor -->
+            <col style="width: 3cm;">     <!-- Valor Pago/Recebido -->
+            <col style="width: 2cm;">     <!-- Status -->
+        </colgroup>
         <thead>
             <tr>
                 <?php foreach ($headers as $h): ?>

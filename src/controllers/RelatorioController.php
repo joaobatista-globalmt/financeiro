@@ -50,6 +50,15 @@ final class RelatorioController
                 return;
             case 'categoria':
                 $dados = $this->relatorioCategoria($empresaId, $dataInicio, $dataFim);
+                layout('Relatório: ' . $tipo, 'relatorios/show_categoria.php', [
+                    'tipo'       => $tipo,
+                    'dados'      => $dados,
+                    'dataInicio' => $dataInicio,
+                    'dataFim'    => $dataFim,
+                ]);
+                return;
+            case 'categoria':
+                $dados = $this->relatorioCategoria($empresaId, $dataInicio, $dataFim);
                 break;
             case 'fornecedor':
                 $dados = $this->relatorioFornecedor($empresaId, $dataInicio, $dataFim);
@@ -315,65 +324,139 @@ final class RelatorioController
         ];
     }
 
+    /**
+     * Relatório por Categoria - Pagar e Receber SEPARADOS, com agrupamento por categoria
+     * e ordem cronológica dentro de cada categoria.
+     *
+     * Estrutura do retorno:
+     *  - headers: ['Vencimento', 'Descrição', 'Entidade', 'Tipo', 'Valor', 'Valor Pago/Recebido', 'Status']
+     *  - rows: cada registro (com __raw__ e __categoria_id__ no fim)
+     *  - grupos: [categoria_id => ['nome', 'cor', 'qtd', 'valor', 'pago', 'rows_idx' => []]]
+     *  - totais_separados: { pagar: [...], receber: [...] }
+     *  - totais: total geral (mantido pra compat com show.php e CSV)
+     */
     private function relatorioCategoria(int $empresaId, string $dataInicio, string $dataFim): array
     {
         $db = Database::getConnection();
 
-        $stmt = $db->prepare('
-            SELECT cat.nome AS categoria, cat.cor,
-                   "pagar" AS tipo,
-                   COUNT(*) AS qtd,
-                   SUM(cp.valor) AS total_pendente,
-                   SUM(CASE WHEN cp.status="paga" THEN cp.valor_pago ELSE 0 END) AS total_pago
+        $stmtPagar = $db->prepare('
+            SELECT cp.id, cp.data_vencimento, cp.descricao, f.razao_social AS entidade,
+                   cp.valor, cp.valor_pago, cp.status,
+                   cat.id AS categoria_id, cat.nome AS categoria, cat.cor AS categoria_cor,
+                   "pagar" AS tipo
             FROM contas_pagar cp
+            JOIN fornecedores f ON f.id = cp.fornecedor_id
             JOIN categorias cat ON cat.id = cp.categoria_id
             WHERE cp.empresa_id = ? AND cp.data_vencimento BETWEEN ? AND ?
-            GROUP BY cat.id
-            UNION ALL
-            SELECT cat.nome AS categoria, cat.cor,
-                   "receber" AS tipo,
-                   COUNT(*) AS qtd,
-                   SUM(cr.valor) AS total_pendente,
-                   SUM(CASE WHEN cr.status="recebida" THEN cr.valor_recebido ELSE 0 END) AS total_pago
+            ORDER BY cat.nome, cp.data_vencimento, cp.id
+        ');
+        $stmtPagar->execute([$empresaId, $dataInicio, $dataFim]);
+        $rowsPagar = $stmtPagar->fetchAll();
+
+        $stmtReceber = $db->prepare('
+            SELECT cr.id, cr.data_vencimento, cr.descricao, c.razao_social AS entidade,
+                   cr.valor, cr.valor_recebido AS valor_pago, cr.status,
+                   cat.id AS categoria_id, cat.nome AS categoria, cat.cor AS categoria_cor,
+                   "receber" AS tipo
             FROM contas_receber cr
+            JOIN clientes c ON c.id = cr.cliente_id
             JOIN categorias cat ON cat.id = cr.categoria_id
             WHERE cr.empresa_id = ? AND cr.data_vencimento BETWEEN ? AND ?
-            GROUP BY cat.id
-            ORDER BY tipo, categoria
+            ORDER BY cat.nome, cr.data_vencimento, cr.id
         ');
-        $stmt->execute([$empresaId, $dataInicio, $dataFim, $empresaId, $dataInicio, $dataFim]);
-        $rows = $stmt->fetchAll();
+        $stmtReceber->execute([$empresaId, $dataInicio, $dataFim]);
+        $rowsReceber = $stmtReceber->fetchAll();
 
-        // Totais
-        $totalQtd      = 0;
-        $totalPendente = 0.0;
-        $totalPago     = 0.0;
-        foreach ($rows as $r) {
-            $totalQtd      += (int)$r['qtd'];
-            $totalPendente += (float)$r['total_pendente'];
-            $totalPago     += (float)$r['total_pago'];
+        $rows = array_merge($rowsPagar, $rowsReceber);
+        // Ordena por categoria (alfabético) e dentro por data crescente
+        usort($rows, function ($a, $b) {
+            $c = strcmp($a['categoria'], $b['categoria']);
+            if ($c !== 0) return $c;
+            $c = strcmp($a['data_vencimento'], $b['data_vencimento']);
+            if ($c !== 0) return $c;
+            return $a['id'] - $b['id'];
+        });
+
+        // Agrupa por categoria
+        $grupos = [];
+        $totaisPagar = ['qtd' => 0, 'valor' => 0.0, 'pago' => 0.0];
+        $totaisReceber = ['qtd' => 0, 'valor' => 0.0, 'pago' => 0.0];
+
+        foreach ($rows as $idx => $r) {
+            $catId = (int)$r['categoria_id'];
+            $valor = (float)$r['valor'];
+            $pago  = (float)($r['valor_pago'] ?? 0);
+            if (!isset($grupos[$catId])) {
+                $grupos[$catId] = [
+                    'id'      => $catId,
+                    'nome'    => $r['categoria'],
+                    'cor'     => $r['categoria_cor'] ?? '#6c757d',
+                    'qtd'     => 0,
+                    'valor'   => 0.0,
+                    'pago'    => 0.0,
+                    'pagar'   => 0.0,
+                    'receber' => 0.0,
+                    'rows_idx' => [],
+                ];
+            }
+            $grupos[$catId]['qtd']++;
+            $grupos[$catId]['valor'] += $valor;
+            $grupos[$catId]['pago'] += $pago;
+            $grupos[$catId]['rows_idx'][] = $idx;
+            if ($r['tipo'] === 'pagar') {
+                $grupos[$catId]['pagar'] += $valor;
+                $totaisPagar['qtd']++;
+                $totaisPagar['valor'] += $valor;
+                $totaisPagar['pago'] += $pago;
+            } else {
+                $grupos[$catId]['receber'] += $valor;
+                $totaisReceber['qtd']++;
+                $totaisReceber['valor'] += $valor;
+                $totaisReceber['pago'] += $pago;
+            }
         }
 
+        $totalValor = $totaisPagar['valor'] + $totaisReceber['valor'];
+        $totalPago  = $totaisPagar['pago']  + $totaisReceber['pago'];
+        $totalQtd   = count($rows);
+
         return [
-            'titulo'  => 'Por Categoria',
-            'headers' => ['Tipo', 'Categoria', 'Qtd', 'Pendente', 'Pago/Recebido'],
+            'titulo'  => 'Contas por Categoria',
+            'headers' => ['Vencimento', 'Descrição', 'Entidade', 'Tipo', 'Valor', 'Valor Pago/Recebido', 'Status'],
             'rows'    => array_map(function ($r) {
                 return [
-                    ucfirst($r['tipo']),
-                    $r['categoria'],
-                    $r['qtd'],
-                    number_format((float)$r['total_pendente'], 2, ',', '.'),
-                    number_format((float)$r['total_pago'], 2, ',', '.'),
+                    dataIsoParaBr($r['data_vencimento']),
+                    $r['descricao'],
+                    $r['entidade'],
+                    $r['tipo'] === 'pagar' ? 'A Pagar' : 'A Receber',
+                    number_format((float)$r['valor'], 2, ',', '.'),
+                    number_format((float)($r['valor_pago'] ?? 0), 2, ',', '.'),
+                    $r['status'],
+                    '__raw__' => $r,
                 ];
             }, $rows),
-            'totais'  => [
-                'label' => 'TOTAL',
+            'grupos' => $grupos,
+            'totais_separados' => [
+                'pagar' => [
+                    'qtd'   => $totaisPagar['qtd'],
+                    'valor' => $totaisPagar['valor'],
+                    'pago'  => $totaisPagar['pago'],
+                ],
+                'receber' => [
+                    'qtd'   => $totaisReceber['qtd'],
+                    'valor' => $totaisReceber['valor'],
+                    'pago'  => $totaisReceber['pago'],
+                ],
+            ],
+            'totais' => [
+                'label' => 'TOTAL GERAL',
                 'cells' => [
-                    'TOTAL',
-                    'Σ ' . count($rows) . ' categorias',
-                    (string)$totalQtd,
-                    number_format($totalPendente, 2, ',', '.'),
+                    'TOTAL GERAL',
+                    'Σ ' . $totalQtd . ' contas (' . $totaisPagar['qtd'] . ' pagar + ' . $totaisReceber['qtd'] . ' receber) em ' . count($grupos) . ' categorias',
+                    '', '', '',
+                    number_format($totalValor, 2, ',', '.'),
                     number_format($totalPago, 2, ',', '.'),
+                    '',
                 ],
             ],
         ];
@@ -956,9 +1039,12 @@ final class RelatorioController
 
     private function gerarHtmlRelatorio(string $tipo, array $dados, string $dataInicio, string $dataFim): string
     {
-        // Para o relatório de Período, usa a view customizada (agrupada por data)
+        // Relatórios com view customizada (agrupados):
         if ($tipo === 'periodo') {
             return $this->gerarHtmlRelatorioPeriodo($dados, $dataInicio, $dataFim);
+        }
+        if ($tipo === 'categoria') {
+            return $this->gerarHtmlRelatorioCategoria($dados, $dataInicio, $dataFim);
         }
 
         $empresa = Auth::user();
@@ -1178,6 +1264,136 @@ final class RelatorioController
         // Total geral
         $html .= '<tfoot><tr class="total-row">';
         $html .= '<th colspan="5" style="text-align:right;">TOTAL GERAL (Pagar + Receber):</th>';
+        $html .= '<th class="valor">R$ ' . number_format($sep['pagar']['valor'] + $sep['receber']['valor'], 2, ',', '.') . '</th>';
+        $html .= '<th class="valor">R$ ' . number_format($sep['pagar']['pago'] + $sep['receber']['pago'], 2, ',', '.') . '</th>';
+        $html .= '<th>' . ($sep['pagar']['qtd'] + $sep['receber']['qtd']) . ' contas</th>';
+        $html .= '</tr></tfoot>';
+
+        $html .= '</table></body></html>';
+        return $html;
+    }
+
+    /**
+     * Gera HTML específico do relatório por Categoria (PDF-friendly):
+     *  - 3 cards de resumo no topo (Pagar / Receber / Saldo)
+     *  - Tabela agrupada por categoria (com cor da categoria)
+     *  - Ordem cronológica dentro de cada categoria
+     *  - Subtotal por categoria
+     *  - Total geral no rodapé
+     */
+    private function gerarHtmlRelatorioCategoria(array $dados, string $dataInicio, string $dataFim): string
+    {
+        $empresa = Auth::user();
+        $empresaNome = '';
+        foreach (($_SESSION['empresas'] ?? []) as $emp) {
+            if ((int)$emp['empresa_id'] === (int)$empresa['empresa_id']) {
+                $empresaNome = $emp['nome_fantasia'] ?: $emp['razao_social'];
+                break;
+            }
+        }
+
+        $headers = $dados['headers'];
+        $rows = $dados['rows'];
+        $grupos = $dados['grupos'] ?? [];
+        $sep = $dados['totais_separados'] ?? ['pagar' => ['qtd'=>0,'valor'=>0,'pago'=>0], 'receber' => ['qtd'=>0,'valor'=>0,'pago'=>0]];
+
+        uasort($grupos, function ($a, $b) { return strcmp($a['nome'], $b['nome']); });
+
+        $html = '<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+            body { font-family: Arial, sans-serif; font-size: 11px; }
+            h1 { font-size: 18px; margin-bottom: 5px; }
+            .subtitulo { color: #666; margin-bottom: 14px; font-size: 10px; }
+            .cards { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+            .cards td { width: 33.33%; padding: 10px 12px; border: 1px solid #ddd; vertical-align: top; }
+            .card-pagar   { border-left: 4px solid #dc2626 !important; background: #fef2f2; }
+            .card-receber { border-left: 4px solid #16a34a !important; background: #f0fdf4; }
+            .card-saldo   { border-left: 4px solid #2563eb !important; background: #eff6ff; }
+            .card-label { font-size: 9px; text-transform: uppercase; font-weight: bold; }
+            .card-pagar   .card-label { color: #991b1b; }
+            .card-receber .card-label { color: #166534; }
+            .card-saldo   .card-label { color: #1e40af; }
+            .card-valor { font-size: 18px; font-weight: bold; margin-top: 4px; }
+            .card-pagar   .card-valor { color: #dc2626; }
+            .card-receber .card-valor { color: #16a34a; }
+            .card-saldo   .card-valor { color: #2563eb; }
+            .card-sub { font-size: 9px; color: #6b7280; margin-top: 2px; }
+            table.dados { width: 100%; border-collapse: collapse; margin-top: 6px; }
+            table.dados th, table.dados td { border: 1px solid #ccc; padding: 5px 7px; text-align: left; }
+            table.dados th { background: #f5f5f5; font-weight: bold; font-size: 10px; }
+            tr.cat-header td { font-weight: bold; padding: 6px 8px; border-top: 2px solid #888; }
+            tr.subtotal td { background: #fef9c3; color: #854d0e; font-weight: 600; border-bottom: 1px solid #facc15; }
+            tr.subtotal td.valor { text-align: right; font-variant-numeric: tabular-nums; }
+            tr.total-row th { background: #1e40af; color: #fff; font-size: 12px; padding: 8px 10px; }
+            tr.total-row th.valor { text-align: right; font-variant-numeric: tabular-nums; }
+        </style></head><body>';
+
+        $html .= '<h1>' . htmlspecialchars($dados['titulo']) . '</h1>';
+        $html .= '<div class="subtitulo">' . htmlspecialchars($empresaNome);
+        $html .= ' | Período: ' . dataIsoParaBr($dataInicio) . ' a ' . dataIsoParaBr($dataFim);
+        $html .= ' | Gerado em ' . date('d/m/Y H:i') . '</div>';
+
+        // Cards de resumo
+        $html .= '<table class="cards"><tr>';
+        $html .= '<td class="card-pagar"><div class="card-label">🔴 A PAGAR</div>';
+        $html .= '<div class="card-valor">R$ ' . number_format($sep['pagar']['valor'], 2, ',', '.') . '</div>';
+        $html .= '<div class="card-sub">' . $sep['pagar']['qtd'] . ' conta(s) &middot; Pago: R$ ' . number_format($sep['pagar']['pago'], 2, ',', '.') . '</div></td>';
+        $html .= '<td class="card-receber"><div class="card-label">🟢 A RECEBER</div>';
+        $html .= '<div class="card-valor">R$ ' . number_format($sep['receber']['valor'], 2, ',', '.') . '</div>';
+        $html .= '<div class="card-sub">' . $sep['receber']['qtd'] . ' conta(s) &middot; Recebido: R$ ' . number_format($sep['receber']['pago'], 2, ',', '.') . '</div></td>';
+        $saldo = $sep['receber']['valor'] - $sep['pagar']['valor'];
+        $html .= '<td class="card-saldo"><div class="card-label">💰 SALDO PREVISTO</div>';
+        $html .= '<div class="card-valor">R$ ' . number_format($saldo, 2, ',', '.') . '</div>';
+        $html .= '<div class="card-sub">Receber - Pagar &middot; ' . count($grupos) . ' categorias</div></td>';
+        $html .= '</tr></table>';
+
+        // Tabela agrupada por categoria
+        $html .= '<table class="dados">';
+        $html .= '<colgroup>';
+        $html .= '<col style="width:2.5cm;">';
+        $html .= '<col style="width:7cm;">';
+        $html .= '<col style="width:4cm;">';
+        $html .= '<col style="width:2cm;">';
+        $html .= '<col style="width:2.8cm;">';
+        $html .= '<col style="width:3cm;">';
+        $html .= '<col style="width:2cm;">';
+        $html .= '</colgroup>';
+        $html .= '<thead><tr>';
+        foreach ($headers as $h) $html .= '<th>' . htmlspecialchars($h) . '</th>';
+        $html .= '</tr></thead><tbody>';
+
+        if (empty($grupos)) {
+            $html .= '<tr><td colspan="' . count($headers) . '" style="text-align:center; color:#999; padding:20px;">Nenhuma conta encontrada no período.</td></tr>';
+        } else {
+            foreach ($grupos as $g) {
+                $cor = !empty($g['cor']) && preg_match('/^#[0-9A-Fa-f]{6}$/', $g['cor']) ? $g['cor'] : '#6b7280';
+                // Cabeçalho da categoria
+                $html .= '<tr class="cat-header"><td colspan="' . count($headers) . '" style="background:' . $cor . '; color:#fff;">';
+                $html .= '🏷️ ' . htmlspecialchars($g['nome']);
+                $html .= ' <span style="opacity:.85; font-weight:400; font-size:9px;">(' . $g['qtd'] . ' conta(s) &middot; Pagar: R$ ' . number_format($g['pagar'], 2, ',', '.') . ' &middot; Receber: R$ ' . number_format($g['receber'], 2, ',', '.') . ')</span>';
+                $html .= '</td></tr>';
+                // Linhas (em ordem cronológica - já vem ordenado do controller)
+                foreach ($g['rows_idx'] as $idx) {
+                    $row = $rows[$idx];
+                    $rowShow = $row;
+                    unset($rowShow['__raw__']);
+                    $html .= '<tr>';
+                    foreach ($rowShow as $cell) $html .= '<td>' . htmlspecialchars((string)$cell) . '</td>';
+                    $html .= '</tr>';
+                }
+                // Subtotal da categoria
+                $html .= '<tr class="subtotal">';
+                $html .= '<td colspan="4" style="text-align:right;">Subtotal ' . htmlspecialchars($g['nome']) . ':</td>';
+                $html .= '<td class="valor">R$ ' . number_format($g['valor'], 2, ',', '.') . '</td>';
+                $html .= '<td class="valor">R$ ' . number_format($g['pago'], 2, ',', '.') . '</td>';
+                $html .= '<td></td>';
+                $html .= '</tr>';
+            }
+        }
+        $html .= '</tbody>';
+
+        // Total geral
+        $html .= '<tfoot><tr class="total-row">';
+        $html .= '<th colspan="4" style="text-align:right;">TOTAL GERAL (' . count($grupos) . ' categorias):</th>';
         $html .= '<th class="valor">R$ ' . number_format($sep['pagar']['valor'] + $sep['receber']['valor'], 2, ',', '.') . '</th>';
         $html .= '<th class="valor">R$ ' . number_format($sep['pagar']['pago'] + $sep['receber']['pago'], 2, ',', '.') . '</th>';
         $html .= '<th>' . ($sep['pagar']['qtd'] + $sep['receber']['qtd']) . ' contas</th>';

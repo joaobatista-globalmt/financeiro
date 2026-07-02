@@ -298,6 +298,240 @@ final class MovimentacoesController
     }
 
     /**
+     * GET /corrigir_movimentacao.php?id=N
+     * Form para corrigir movimentação AUTOMÁTICA (conta_pagar/conta_receber).
+     * Só permite editar conta_bancaria_id e descricao (não valor/tipo/data
+     * pois estes vêm da conta de origem).
+     */
+    public function corrigir(): void
+    {
+        Auth::require();
+        Permissao::requer('criar', 'contas_bancarias.php');
+        $id = (int)($_GET['id'] ?? 0);
+        $empresaId = Auth::user()['empresa_id'];
+
+        if ($id <= 0) {
+            Flash::set('erro', 'ID inválido.');
+            redirect('contas_bancarias.php');
+        }
+
+        $db = Database::getConnection();
+        $stmt = $db->prepare('
+            SELECT m.*, cb.descricao AS conta_descricao
+            FROM movimentacoes_bancarias m
+            JOIN contas_bancarias cb ON cb.id = m.conta_bancaria_id
+            WHERE m.id = ? AND m.empresa_id = ?
+        ');
+        $stmt->execute([$id, $empresaId]);
+        $mov = $stmt->fetch();
+
+        if (!$mov) {
+            Flash::set('erro', 'Movimentação não encontrada.');
+            redirect('contas_bancarias.php');
+        }
+
+        // Só conta_pagar e conta_receber podem ser corrigidas (transferencia
+        // exigiria ajustar 2 contas, melhor não por aqui)
+        if (!in_array($mov['origem'], ['conta_pagar', 'conta_receber'], true)) {
+            Flash::set('erro', 'Apenas movimentações de Conta a Pagar/Receber podem ser corrigidas por aqui. Para transferências, estorne e refaça.');
+            redirect("movimentacoes.php?conta_id={$mov['conta_bancaria_id']}");
+        }
+
+        // Lista todas as contas bancárias ativas (pode mudar de uma pra outra)
+        $stmtCb = $db->prepare('
+            SELECT id, descricao, tipo, banco FROM contas_bancarias
+            WHERE empresa_id = ? AND ativo = 1
+            ORDER BY descricao
+        ');
+        $stmtCb->execute([$empresaId]);
+        $contasBanco = $stmtCb->fetchAll();
+
+        layout('Corrigir Movimentação', 'movimentacoes/corrigir.php', [
+            'mov'         => $mov,
+            'contasBanco' => $contasBanco,
+        ]);
+    }
+
+    /**
+     * POST /corrigir_movimentacao.php
+     * Salva correção de movimentação automática (apenas conta_bancaria_id
+     * e descricao).
+     */
+    public function salvarCorrecao(): void
+    {
+        Auth::require();
+        Permissao::requer('criar', 'contas_bancarias.php');
+        $id = (int)($_POST['id'] ?? 0);
+        $empresaId = Auth::user()['empresa_id'];
+        $usuarioId = Auth::user()['id'];
+
+        if ($id <= 0) {
+            Flash::set('erro', 'ID inválido.');
+            redirect('contas_bancarias.php');
+        }
+
+        $novaContaId  = (int)($_POST['conta_bancaria_id'] ?? 0);
+        $novaDescricao = trim($_POST['descricao'] ?? '');
+
+        if ($novaContaId <= 0) {
+            Flash::set('erro', 'Selecione a conta bancária correta.');
+            redirect("corrigir_movimentacao.php?id=$id");
+        }
+        if (empty($novaDescricao)) {
+            Flash::set('erro', 'Descrição é obrigatória.');
+            redirect("corrigir_movimentacao.php?id=$id");
+        }
+
+        $db = Database::getConnection();
+        $db->beginTransaction();
+
+        try {
+            // Carrega a movimentação
+            $stmt = $db->prepare('SELECT * FROM movimentacoes_bancarias WHERE id = ? AND empresa_id = ? FOR UPDATE');
+            $stmt->execute([$id, $empresaId]);
+            $mov = $stmt->fetch();
+
+            if (!$mov) {
+                throw new \RuntimeException('Movimentação não encontrada.');
+            }
+
+            if (!in_array($mov['origem'], ['conta_pagar', 'conta_receber'], true)) {
+                throw new \RuntimeException('Apenas movimentações de Conta a Pagar/Receber podem ser corrigidas por aqui.');
+            }
+
+            // Verifica que a nova conta existe e pertence à empresa
+            $stmtCb = $db->prepare('SELECT id FROM contas_bancarias WHERE id = ? AND empresa_id = ?');
+            $stmtCb->execute([$novaContaId, $empresaId]);
+            if (!$stmtCb->fetch()) {
+                throw new \RuntimeException('Conta bancária inválida.');
+            }
+
+            // Atualiza somente conta_bancaria_id e descricao
+            $stmtU = $db->prepare('
+                UPDATE movimentacoes_bancarias SET
+                    conta_bancaria_id = :conta_bancaria_id,
+                    descricao = :descricao
+                WHERE id = :id AND empresa_id = :empresa_id
+            ');
+            $stmtU->execute([
+                'conta_bancaria_id' => $novaContaId,
+                'descricao'         => $novaDescricao,
+                'id'                => $id,
+                'empresa_id'        => $empresaId,
+            ]);
+
+            $db->commit();
+            Flash::set('sucesso', 'Movimentação corrigida.');
+            redirect("movimentacoes.php?conta_id=$novaContaId");
+        } catch (\Throwable $e) {
+            $db->rollBack();
+            error_log('[Movimentacoes] Erro ao corrigir: ' . $e->getMessage());
+            Flash::set('erro', 'Erro: ' . $e->getMessage());
+            redirect("corrigir_movimentacao.php?id=$id");
+        }
+    }
+
+    /**
+     * GET|POST /estornar_movimentacao.php?id=N
+     * Estorna movimentação de conta_pagar ou conta_receber.
+     *  - Cria movimentação INVERSA (entrada vira saída e vice-versa)
+     *  - Volta o status da conta_pagar/conta_receber para 'aprovada' (não pendente,
+     *    pois se foi paga, presume-se que foi aprovada antes)
+     *  - Limpa data_pagamento/data_recebimento, valor_pago/valor_recebido
+     *    e conta_bancaria_id da conta de origem
+     */
+    public function estornar(): void
+    {
+        Auth::require();
+        Permissao::requer('excluir', 'contas_bancarias.php');
+        $id = (int)($_GET['id'] ?? $_POST['id'] ?? 0);
+        $empresaId = Auth::user()['empresa_id'];
+        $usuarioId = Auth::user()['id'];
+
+        if ($id <= 0) {
+            Flash::set('erro', 'ID inválido.');
+            redirect('contas_bancarias.php');
+        }
+
+        $db = Database::getConnection();
+        $db->beginTransaction();
+
+        try {
+            // Carrega a movimentação
+            $stmt = $db->prepare('SELECT * FROM movimentacoes_bancarias WHERE id = ? AND empresa_id = ? FOR UPDATE');
+            $stmt->execute([$id, $empresaId]);
+            $mov = $stmt->fetch();
+
+            if (!$mov) {
+                throw new \RuntimeException('Movimentação não encontrada.');
+            }
+
+            if (!in_array($mov['origem'], ['conta_pagar', 'conta_receber'], true)) {
+                throw new \RuntimeException('Apenas movimentações de Conta a Pagar/Receber podem ser estornadas.');
+            }
+
+            // Cria movimentação inversa (estorno)
+            $tipoInverso = $mov['tipo'] === 'entrada' ? 'saida' : 'entrada';
+            $descEstorno = 'ESTORNO de: ' . $mov['descricao'];
+
+            $stmtEst = $db->prepare('
+                INSERT INTO movimentacoes_bancarias
+                    (empresa_id, conta_bancaria_id, data_movimento, tipo, origem,
+                     valor, descricao, conta_pagar_id, conta_receber_id, transferencia_id, usuario_id)
+                VALUES
+                    (:empresa_id, :conta_bancaria_id, :data_movimento, :tipo, "manual",
+                     :valor, :descricao, :conta_pagar_id, :conta_receber_id, :transferencia_id, :usuario_id)
+            ');
+            $stmtEst->execute([
+                'empresa_id'        => $empresaId,
+                'conta_bancaria_id' => $mov['conta_bancaria_id'],
+                'data_movimento'    => date('Y-m-d'),
+                'tipo'              => $tipoInverso,
+                'valor'             => $mov['valor'],
+                'descricao'         => $descEstorno,
+                'conta_pagar_id'    => $mov['conta_pagar_id'],
+                'conta_receber_id'  => $mov['conta_receber_id'],
+                'transferencia_id'  => $mov['transferencia_id'],
+                'usuario_id'        => $usuarioId,
+            ]);
+
+            // Volta a conta de origem pra "aprovada" (ou seja, sem o pagamento/recebimento)
+            if ($mov['origem'] === 'conta_pagar' && $mov['conta_pagar_id']) {
+                $stmtCP = $db->prepare('
+                    UPDATE contas_pagar SET
+                        status = "aprovada",
+                        data_pagamento = NULL,
+                        valor_pago = NULL,
+                        conta_bancaria_id = NULL,
+                        usuario_pagamento_id = NULL
+                    WHERE id = ? AND empresa_id = ?
+                ');
+                $stmtCP->execute([$mov['conta_pagar_id'], $empresaId]);
+            } elseif ($mov['origem'] === 'conta_receber' && $mov['conta_receber_id']) {
+                $stmtCR = $db->prepare('
+                    UPDATE contas_receber SET
+                        status = "aprovada",
+                        data_recebimento = NULL,
+                        valor_recebido = NULL,
+                        conta_bancaria_id = NULL,
+                        usuario_recebimento_id = NULL
+                    WHERE id = ? AND empresa_id = ?
+                ');
+                $stmtCR->execute([$mov['conta_receber_id'], $empresaId]);
+            }
+
+            $db->commit();
+            Flash::set('sucesso', 'Movimentação estornada e conta de origem voltou para aprovada (pronta para novo pagamento/recebimento).');
+            redirect("movimentacoes.php?conta_id={$mov['conta_bancaria_id']}");
+        } catch (\Throwable $e) {
+            $db->rollBack();
+            error_log('[Movimentacoes] Erro ao estornar: ' . $e->getMessage());
+            Flash::set('erro', 'Erro ao estornar: ' . $e->getMessage());
+            redirect("movimentacoes.php?conta_id={$mov['conta_bancaria_id']}");
+        }
+    }
+
+    /**
      * Lança movimentação automática (usado por outros controllers).
      * Retorna ID da movimentação criada, ou false em caso de erro.
      *

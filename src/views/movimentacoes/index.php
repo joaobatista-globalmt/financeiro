@@ -11,7 +11,6 @@
     <h1>📊 Extrato: <?= htmlspecialchars($conta['descricao']) ?></h1>
     <div>
         <a href="movimentacao_form.php?conta_id=<?= (int)$conta['id'] ?>" class="btn btn-primary">+ Lançamento Manual</a>
-        <a href="relatorio_show.php?tipo=extrato_conta&conta_id=<?= (int)$conta['id'] ?>&data_inicio=<?= urlencode($filtros['data_inicio']) ?>&data_fim=<?= urlencode($filtros['data_fim']) ?>" class="btn">📊 Relatório</a>
         <a href="contas_bancarias.php" class="btn">← Voltar</a>
     </div>
 </div>
@@ -109,6 +108,15 @@
                             <input type="hidden" name="acao" value="excluir">
                             <button type="submit" class="btn btn-sm btn-danger">Excluir</button>
                         </form>
+                    <?php elseif (in_array($m['origem'], ['conta_pagar', 'conta_receber'], true)): ?>
+                        <?php if (Permissao::tem('criar')): ?>
+                            <a href="corrigir_movimentacao.php?id=<?= (int)$m['id'] ?>" class="btn btn-sm" title="Corrigir conta bancária ou descrição">🔧 Corrigir</a>
+                        <?php endif; ?>
+                        <?php if (Permissao::tem('excluir')): ?>
+                            <a href="estornar_movimentacao.php?id=<?= (int)$m['id'] ?>" class="btn btn-sm btn-danger"
+                               onclick="return confirm('Estornar esta movimentação? Será criada uma movimentação inversa e a conta de origem voltará para APROVADA.')"
+                               title="Estornar (reverte o pagamento)">↩ Estornar</a>
+                        <?php endif; ?>
                     <?php else: ?>
                         <small class="muted">(automática)</small>
                     <?php endif; ?>

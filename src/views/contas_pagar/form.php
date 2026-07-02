@@ -122,9 +122,8 @@ $ehPago = $status === 'paga';
         <button type="submit" class="btn btn-primary">Salvar</button>
         <?php if ($conta && Permissao::tem('excluir') && $status !== 'paga'): ?>
             <button type="submit" formaction="conta_acao.php" formmethod="post"
-                    onclick="return confirm('Excluir esta conta?')"
-                    class="btn btn-danger">Excluir</button>
-            <input type="hidden" name="_method" value="DELETE">
+                    onclick="return confirm('ATENÇÃO: Excluir DEFINITIVAMENTE esta conta? Não dá pra desfazer.\n\nSó é possível se ela ainda não tiver sido paga nem for pai de parcelas.')"
+                    class="btn btn-danger">🗑️ Excluir</button>
         <?php endif; ?>
         <a href="contas_pagar.php" class="btn">Cancelar</a>
     </div>

@@ -363,12 +363,29 @@ final class ContasReceberController
             } elseif ($acao === 'excluir') {
                 Permissao::requer('excluir', 'contas_receber.php');
                 if ($conta['status'] === 'recebida') {
-                    Flash::set('erro', 'Não é possível excluir conta recebida.');
+                    Flash::set('erro', 'Não é possível excluir conta recebida. Estorne o recebimento primeiro.');
                     redirect('contas_receber.php');
                 }
+
+                // Bloqueia se tem movimentação bancária
+                $stmtMov = $db->prepare('SELECT COUNT(*) AS total FROM movimentacoes_bancarias WHERE conta_receber_id = ? AND empresa_id = ?');
+                $stmtMov->execute([$id, $empresaId]);
+                if ((int)$stmtMov->fetchColumn() > 0) {
+                    Flash::set('erro', 'Conta possui movimentação bancária vinculada. Estorne o recebimento antes de excluir.');
+                    redirect('contas_receber.php');
+                }
+
+                // Bloqueia se for conta-pai com parcelas filhas
+                $stmtParc = $db->prepare('SELECT COUNT(*) AS total FROM contas_receber WHERE conta_pai_id = ? AND id != ? AND empresa_id = ?');
+                $stmtParc->execute([$id, $id, $empresaId]);
+                if ((int)$stmtParc->fetchColumn() > 0) {
+                    Flash::set('erro', 'Esta conta é a "pai" de um parcelamento. Exclua primeiro as parcelas filhas, ou cancele esta conta em vez de excluir.');
+                    redirect('contas_receber.php');
+                }
+
                 $stmtD = $db->prepare('DELETE FROM contas_receber WHERE id = ? AND empresa_id = ?');
                 $stmtD->execute([$id, $empresaId]);
-                Flash::set('sucesso', 'Conta excluída.');
+                Flash::set('sucesso', 'Conta excluída definitivamente.');
             } else {
                 Flash::set('erro', 'Ação inválida.');
             }

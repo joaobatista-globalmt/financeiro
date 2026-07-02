@@ -358,12 +358,29 @@ final class ContasPagarController
             } elseif ($acao === 'excluir') {
                 Permissao::requer('excluir', 'contas_pagar.php');
                 if ($conta['status'] === 'paga') {
-                    Flash::set('erro', 'Não é possível excluir conta paga.');
+                    Flash::set('erro', 'Não é possível excluir conta paga. Estorne o pagamento primeiro.');
                     redirect('contas_pagar.php');
                 }
+
+                // Bloqueia se tem movimentação bancária (defesa em profundidade)
+                $stmtMov = $db->prepare('SELECT COUNT(*) AS total FROM movimentacoes_bancarias WHERE conta_pagar_id = ? AND empresa_id = ?');
+                $stmtMov->execute([$id, $empresaId]);
+                if ((int)$stmtMov->fetchColumn() > 0) {
+                    Flash::set('erro', 'Conta possui movimentação bancária vinculada. Estorne o pagamento antes de excluir.');
+                    redirect('contas_pagar.php');
+                }
+
+                // Bloqueia se for conta-pai com parcelas filhas
+                $stmtParc = $db->prepare('SELECT COUNT(*) AS total FROM contas_pagar WHERE conta_pai_id = ? AND id != ? AND empresa_id = ?');
+                $stmtParc->execute([$id, $id, $empresaId]);
+                if ((int)$stmtParc->fetchColumn() > 0) {
+                    Flash::set('erro', 'Esta conta é a "pai" de um parcelamento. Exclua primeiro as parcelas filhas, ou cancele esta conta em vez de excluir.');
+                    redirect('contas_pagar.php');
+                }
+
                 $stmtD = $db->prepare('DELETE FROM contas_pagar WHERE id = ? AND empresa_id = ?');
                 $stmtD->execute([$id, $empresaId]);
-                Flash::set('sucesso', 'Conta excluída.');
+                Flash::set('sucesso', 'Conta excluída definitivamente.');
             } else {
                 Flash::set('erro', 'Ação inválida.');
             }

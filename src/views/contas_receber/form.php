@@ -118,6 +118,11 @@ $ehRecebido = $status === 'recebida';
 
     <div class="form-actions">
         <button type="submit" class="btn btn-primary">Salvar</button>
+        <?php if ($conta && Permissao::tem('excluir') && $status !== 'recebida'): ?>
+            <button type="submit" formaction="conta_receber_acao.php" formmethod="post"
+                    onclick="return confirm('ATENÇÃO: Excluir DEFINITIVAMENTE esta conta? Não dá pra desfazer.\n\nSó é possível se ela ainda não tiver sido recebida nem for pai de parcelas.')"
+                    class="btn btn-danger">🗑️ Excluir</button>
+        <?php endif; ?>
         <a href="contas_receber.php" class="btn">Cancelar</a>
     </div>
 </form>

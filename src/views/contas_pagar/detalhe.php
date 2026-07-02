@@ -124,6 +124,15 @@
         </form>
     <?php endif; ?>
 
+    <?php if (in_array($conta['status'], ['pendente', 'aprovada', 'cancelada'], true) && Permissao::tem('excluir')): ?>
+        <form method="post" action="conta_acao.php" style="display:inline"
+              onsubmit="return confirm('ATENÇÃO: Excluir DEFINITIVAMENTE esta conta? Não dá pra desfazer.\n\nSó é possível se ela ainda não tiver sido paga nem for pai de parcelas.\n\nContinuar?')">
+            <input type="hidden" name="id" value="<?= (int)$conta['id'] ?>">
+            <input type="hidden" name="acao" value="excluir">
+            <button class="btn btn-danger">🗑️ Excluir</button>
+        </form>
+    <?php endif; ?>
+
     <form method="post" action="anexo_upload.php" enctype="multipart/form-data" style="display:inline">
         <input type="hidden" name="tipo_origem" value="conta_pagar">
         <input type="hidden" name="origem_id" value="<?= (int)$conta['id'] ?>">

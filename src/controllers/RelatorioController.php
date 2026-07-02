@@ -71,7 +71,13 @@ final class RelatorioController
                 break;
             case 'atrasadas':
                 $dados = $this->relatorioAtrasadas($empresaId);
-                break;
+                layout('Relatório: ' . $tipo, 'relatorios/show_atrasadas.php', [
+                    'tipo'       => $tipo,
+                    'dados'      => $dados,
+                    'dataInicio' => $dataInicio,
+                    'dataFim'    => $dataFim,
+                ]);
+                return;
             case 'extrato_conta':
                 $contaId = (int)($_GET['conta_id'] ?? 0);
                 if ($contaId <= 0) {
@@ -623,22 +629,40 @@ final class RelatorioController
         ];
     }
 
+    /**
+     * Relatório de Contas Atrasadas - Pagar e Receber SEPARADOS.
+     *
+     * Estrutura do retorno:
+     *  - titulo: 'Contas Atrasadas'
+     *  - headers: ['Vencimento', 'Descrição', 'Entidade', 'Categoria', 'Valor', 'Dias Atraso']
+     *  - rows_pagar: lista de contas a pagar atrasadas
+     *  - rows_receber: lista de contas a receber atrasadas
+     *  - totais_separados: { pagar: {qtd, valor, max_atraso}, receber: {qtd, valor, max_atraso} }
+     *  - totais: total geral (compat com show.php e CSV - uma linha só)
+     */
     private function relatorioAtrasadas(int $empresaId): array
     {
         $db = Database::getConnection();
         $hoje = date('Y-m-d');
 
-        $stmt = $db->prepare('
-            SELECT "Pagar" AS tipo, cp.data_vencimento, cp.descricao,
-                   f.razao_social AS entidade, cat.nome AS categoria,
+        // ---- CONTAS A PAGAR ATRASADAS ----
+        $stmtPagar = $db->prepare('
+            SELECT cp.data_vencimento, cp.descricao,
+                   f.razao_social AS entidade, cat.nome AS categoria, cat.cor AS categoria_cor,
                    cp.valor, DATEDIFF(?, cp.data_vencimento) AS dias_atraso
             FROM contas_pagar cp
             JOIN fornecedores f ON f.id = cp.fornecedor_id
             JOIN categorias cat ON cat.id = cp.categoria_id
             WHERE cp.empresa_id = ? AND cp.status IN ("pendente","aprovada") AND cp.data_vencimento < ?
-            UNION ALL
-            SELECT "Receber" AS tipo, cr.data_vencimento, cr.descricao,
-                   c.razao_social AS entidade, cat.nome AS categoria,
+            ORDER BY dias_atraso DESC
+        ');
+        $stmtPagar->execute([$hoje, $empresaId, $hoje]);
+        $rowsPagar = $stmtPagar->fetchAll();
+
+        // ---- CONTAS A RECEBER ATRASADAS ----
+        $stmtReceber = $db->prepare('
+            SELECT cr.data_vencimento, cr.descricao,
+                   c.razao_social AS entidade, cat.nome AS categoria, cat.cor AS categoria_cor,
                    cr.valor, DATEDIFF(?, cr.data_vencimento) AS dias_atraso
             FROM contas_receber cr
             JOIN clientes c ON c.id = cr.cliente_id
@@ -646,43 +670,79 @@ final class RelatorioController
             WHERE cr.empresa_id = ? AND cr.status IN ("pendente","aprovada") AND cr.data_vencimento < ?
             ORDER BY dias_atraso DESC
         ');
-        $stmt->execute([$hoje, $empresaId, $hoje, $hoje, $empresaId, $hoje]);
-        $rows = $stmt->fetchAll();
+        $stmtReceber->execute([$hoje, $empresaId, $hoje]);
+        $rowsReceber = $stmtReceber->fetchAll();
 
-        // Totais: qtd + valor
-        $totalValor   = 0.0;
-        $maxAtraso    = 0;
-        foreach ($rows as $r) {
-            $totalValor += (float)$r['valor'];
-            if ((int)$r['dias_atraso'] > $maxAtraso) {
-                $maxAtraso = (int)$r['dias_atraso'];
-            }
+        // ---- TOTAIS SEPARADOS ----
+        $totalPagar = 0.0;
+        $maxAtrasoPagar = 0;
+        foreach ($rowsPagar as $r) {
+            $totalPagar += (float)$r['valor'];
+            if ((int)$r['dias_atraso'] > $maxAtrasoPagar) $maxAtrasoPagar = (int)$r['dias_atraso'];
         }
+
+        $totalReceber = 0.0;
+        $maxAtrasoReceber = 0;
+        foreach ($rowsReceber as $r) {
+            $totalReceber += (float)$r['valor'];
+            if ((int)$r['dias_atraso'] > $maxAtrasoReceber) $maxAtrasoReceber = (int)$r['dias_atraso'];
+        }
+
+        $totalGeral  = $totalPagar + $totalReceber;
+        $totalQtd    = count($rowsPagar) + count($rowsReceber);
+        $maxAtrasoGeral = max($maxAtrasoPagar, $maxAtrasoReceber);
+
+        // ---- HELPERS DE FORMATAÇÃO ----
+        $formatRow = function ($r) {
+            return [
+                dataIsoParaBr($r['data_vencimento']),
+                $r['descricao'],
+                $r['entidade'],
+                $r['categoria'],
+                number_format((float)$r['valor'], 2, ',', '.'),
+                $r['dias_atraso'],
+                '__raw__' => $r,
+            ];
+        };
 
         return [
             'titulo'  => 'Contas Atrasadas',
-            'headers' => ['Tipo', 'Vencimento', 'Descrição', 'Entidade', 'Categoria', 'Valor', 'Dias Atraso'],
-            'rows'    => array_map(function ($r) {
-                return [
-                    $r['tipo'],
-                    dataIsoParaBr($r['data_vencimento']),
-                    $r['descricao'],
-                    $r['entidade'],
-                    $r['categoria'],
-                    number_format((float)$r['valor'], 2, ',', '.'),
-                    $r['dias_atraso'],
-                ];
-            }, $rows),
+            'headers' => ['Vencimento', 'Descrição', 'Entidade', 'Categoria', 'Valor', 'Dias Atraso'],
+            'rows_pagar'   => array_map($formatRow, $rowsPagar),
+            'rows_receber' => array_map($formatRow, $rowsReceber),
+            'totais_separados' => [
+                'pagar'   => [
+                    'qtd'        => count($rowsPagar),
+                    'valor'      => $totalPagar,
+                    'max_atraso' => $maxAtrasoPagar,
+                ],
+                'receber' => [
+                    'qtd'        => count($rowsReceber),
+                    'valor'      => $totalReceber,
+                    'max_atraso' => $maxAtrasoReceber,
+                ],
+            ],
+            // Mantido pra compat com CSV genérico (lista flat com Tipo no início)
+            'rows'    => array_merge(
+                array_map(function ($r) use ($formatRow) {
+                    $f = $formatRow($r);
+                    return array_merge(['Pagar'], $f);
+                }, $rowsPagar),
+                array_map(function ($r) use ($formatRow) {
+                    $f = $formatRow($r);
+                    return array_merge(['Receber'], $f);
+                }, $rowsReceber)
+            ),
             'totais'  => [
                 'label' => 'TOTAL ATRASADO',
                 'cells' => [
                     'TOTAL',
                     '', // Vencimento
-                    'Σ ' . count($rows) . ' contas',
+                    'Σ ' . $totalQtd . ' contas (' . count($rowsPagar) . ' pagar + ' . count($rowsReceber) . ' receber)',
                     '', // Entidade
                     '', // Categoria
-                    number_format($totalValor, 2, ',', '.'),
-                    'máx: ' . $maxAtraso,
+                    number_format($totalGeral, 2, ',', '.'),
+                    'máx: ' . $maxAtrasoGeral,
                 ],
             ],
         ];
@@ -969,6 +1029,45 @@ final class RelatorioController
     private function exportarCsv(string $tipo, array $dados): void
     {
         $slug = preg_replace('/[^a-z0-9]/', '_', strtolower($tipo));
+
+        // Relatório de Atrasadas tem estrutura especial: headers sem "Tipo" mas rows com "Tipo" (7 colunas)
+        // Aqui a gente re-monta o CSV com a coluna "Tipo" no início
+        if ($tipo === 'atrasadas') {
+            $csvHeaders = ['Tipo', 'Vencimento', 'Descrição', 'Entidade', 'Categoria', 'Valor', 'Dias Atraso'];
+            $csvRows = [];
+            foreach ($dados['rows_pagar'] ?? [] as $r) {
+                $rowShow = $r;
+                unset($rowShow['__raw__']);
+                $csvRows[] = array_merge(['Pagar'], array_values($rowShow));
+            }
+            foreach ($dados['rows_receber'] ?? [] as $r) {
+                $rowShow = $r;
+                unset($rowShow['__raw__']);
+                $csvRows[] = array_merge(['Receber'], array_values($rowShow));
+            }
+            // Linha em branco + total
+            $csvRows[] = array_fill(0, count($csvHeaders), '');
+            $sep = $dados['totais_separados'] ?? ['pagar' => ['qtd'=>0,'valor'=>0], 'receber' => ['qtd'=>0,'valor'=>0]];
+            $linhaTotal = array_fill(0, count($csvHeaders), '');
+            $linhaTotal[0] = 'TOTAL GERAL (Pagar + Receber)';
+            $linhaTotal[5] = 'R$ ' . number_format(($sep['pagar']['valor'] ?? 0) + ($sep['receber']['valor'] ?? 0), 2, ',', '.');
+            $linhaTotal[6] = (($sep['pagar']['qtd'] ?? 0) + ($sep['receber']['qtd'] ?? 0)) . ' contas';
+            $csvRows[] = $linhaTotal;
+            // Subtotais por tipo
+            $linhaPg = array_fill(0, count($csvHeaders), '');
+            $linhaPg[0] = 'Subtotal A Pagar';
+            $linhaPg[5] = 'R$ ' . number_format($sep['pagar']['valor'] ?? 0, 2, ',', '.');
+            $linhaPg[6] = ($sep['pagar']['qtd'] ?? 0) . ' contas';
+            $csvRows[] = $linhaPg;
+            $linhaRc = array_fill(0, count($csvHeaders), '');
+            $linhaRc[0] = 'Subtotal A Receber';
+            $linhaRc[5] = 'R$ ' . number_format($sep['receber']['valor'] ?? 0, 2, ',', '.');
+            $linhaRc[6] = ($sep['receber']['qtd'] ?? 0) . ' contas';
+            $csvRows[] = $linhaRc;
+            CsvExporter::download("relatorio_$slug", $csvHeaders, $csvRows);
+            return;
+        }
+
         $rows = $dados['rows'];
         if (!empty($dados['totais'])) {
             $rows[] = array_fill(0, count($dados['headers']), '');
@@ -1045,6 +1144,9 @@ final class RelatorioController
         }
         if ($tipo === 'categoria') {
             return $this->gerarHtmlRelatorioCategoria($dados, $dataInicio, $dataFim);
+        }
+        if ($tipo === 'atrasadas') {
+            return $this->gerarHtmlRelatorioAtrasadas($dados, $dataInicio, $dataFim);
         }
 
         $empresa = Auth::user();
@@ -1400,6 +1502,184 @@ final class RelatorioController
         $html .= '</tr></tfoot>';
 
         $html .= '</table></body></html>';
+        return $html;
+    }
+
+    /**
+     * Gera HTML específico do relatório de Contas Atrasadas (PDF-friendly):
+     *  - 3 cards de resumo no topo (Pagar / Receber / Saldo)
+     *  - Tabela de CONTAS A PAGAR ATRASADAS (com subtotal)
+     *  - Tabela de CONTAS A RECEBER ATRASADAS (com subtotal)
+     *  - Total geral no rodapé
+     */
+    private function gerarHtmlRelatorioAtrasadas(array $dados, string $dataInicio, string $dataFim): string
+    {
+        $empresa = Auth::user();
+        $empresaNome = '';
+        foreach (($_SESSION['empresas'] ?? []) as $emp) {
+            if ((int)$emp['empresa_id'] === (int)$empresa['empresa_id']) {
+                $empresaNome = $emp['nome_fantasia'] ?: $emp['razao_social'];
+                break;
+            }
+        }
+
+        $headers = $dados['headers'];
+        $rowsPagar   = $dados['rows_pagar']   ?? [];
+        $rowsReceber = $dados['rows_receber'] ?? [];
+        $sep = $dados['totais_separados'] ?? [
+            'pagar'   => ['qtd' => 0, 'valor' => 0.0, 'max_atraso' => 0],
+            'receber' => ['qtd' => 0, 'valor' => 0.0, 'max_atraso' => 0],
+        ];
+        $totalQtd = $sep['pagar']['qtd'] + $sep['receber']['qtd'];
+        $maxAtrasoGeral = max($sep['pagar']['max_atraso'], $sep['receber']['max_atraso']);
+
+        $hoje = dataIsoParaBr(date('Y-m-d'));
+
+        $html = '<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+            body { font-family: Arial, sans-serif; font-size: 11px; }
+            h1 { font-size: 18px; margin-bottom: 5px; }
+            h2 { font-size: 14px; margin: 18px 0 6px 0; }
+            .subtitulo { color: #666; margin-bottom: 14px; font-size: 10px; }
+            .cards { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+            .cards td { width: 33.33%; padding: 10px 12px; border: 1px solid #ddd; vertical-align: top; }
+            .card-pagar   { border-left: 4px solid #dc2626 !important; background: #fef2f2; }
+            .card-receber { border-left: 4px solid #16a34a !important; background: #f0fdf4; }
+            .card-saldo   { border-left: 4px solid #2563eb !important; background: #eff6ff; }
+            .card-label { font-size: 9px; text-transform: uppercase; font-weight: bold; }
+            .card-pagar   .card-label { color: #991b1b; }
+            .card-receber .card-label { color: #166534; }
+            .card-saldo   .card-label { color: #1e40af; }
+            .card-valor { font-size: 18px; font-weight: bold; margin-top: 4px; }
+            .card-pagar   .card-valor { color: #dc2626; }
+            .card-receber .card-valor { color: #16a34a; }
+            .card-saldo   .card-valor { color: #2563eb; }
+            .card-sub { font-size: 9px; color: #6b7280; margin-top: 2px; }
+            table.dados { width: 100%; border-collapse: collapse; margin-top: 4px; }
+            table.dados th, table.dados td { border: 1px solid #ccc; padding: 5px 7px; text-align: left; }
+            table.dados th { background: #f5f5f5; font-weight: bold; font-size: 10px; }
+            th.head-pagar   { background: #fee2e2 !important; color: #991b1b; }
+            th.head-receber { background: #dcfce7 !important; color: #166534; }
+            tr.subtotal-pagar   th { background: #991b1b; color: white; padding: 7px 10px; font-size: 11px; }
+            tr.subtotal-receber th { background: #166534; color: white; padding: 7px 10px; font-size: 11px; }
+            tr.subtotal th.valor { text-align: right; font-variant-numeric: tabular-nums; }
+            .vazio { text-align: center; color: #999; padding: 16px; font-style: italic; }
+            .total-geral {
+                margin-top: 18px; padding: 14px 16px; background: #1e40af; color: white;
+                border-radius: 6px; display: flex; justify-content: space-between; align-items: center;
+            }
+            .total-geral .label { font-size: 11px; text-transform: uppercase; opacity: 0.85; font-weight: 600; }
+            .total-geral .valor { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+            .total-geral .sub { font-size: 10px; opacity: 0.75; margin-top: 2px; }
+        </style></head><body>';
+
+        $html .= '<h1>' . htmlspecialchars($dados['titulo']) . '</h1>';
+        $html .= '<div class="subtitulo">' . htmlspecialchars($empresaNome);
+        $html .= ' | Vencimentos anteriores a ' . $hoje;
+        $html .= ' | Gerado em ' . date('d/m/Y H:i') . '</div>';
+
+        // Cards de resumo
+        $html .= '<table class="cards"><tr>';
+        $html .= '<td class="card-pagar"><div class="card-label">🔴 A PAGAR (atrasado)</div>';
+        $html .= '<div class="card-valor">R$ ' . number_format($sep['pagar']['valor'], 2, ',', '.') . '</div>';
+        $html .= '<div class="card-sub">' . $sep['pagar']['qtd'] . ' conta(s) &middot; Maior atraso: ' . $sep['pagar']['max_atraso'] . ' dia(s)</div></td>';
+        $html .= '<td class="card-receber"><div class="card-label">🟢 A RECEBER (atrasado)</div>';
+        $html .= '<div class="card-valor">R$ ' . number_format($sep['receber']['valor'], 2, ',', '.') . '</div>';
+        $html .= '<div class="card-sub">' . $sep['receber']['qtd'] . ' conta(s) &middot; Maior atraso: ' . $sep['receber']['max_atraso'] . ' dia(s)</div></td>';
+        $saldo = $sep['receber']['valor'] - $sep['pagar']['valor'];
+        $html .= '<td class="card-saldo"><div class="card-label">💰 SALDO PREVISTO</div>';
+        $html .= '<div class="card-valor">R$ ' . number_format($saldo, 2, ',', '.') . '</div>';
+        $html .= '<div class="card-sub">Receber - Pagar &middot; ' . $totalQtd . ' contas &middot; Máx: ' . $maxAtrasoGeral . ' dia(s)</div></td>';
+        $html .= '</tr></table>';
+
+        // --- Tabela PAGAR ---
+        $html .= '<h2 style="color: #991b1b;">🔴 Contas a Pagar Atrasadas</h2>';
+        $html .= '<table class="dados">';
+        $html .= '<colgroup>';
+        $html .= '<col style="width:2.5cm;">';
+        $html .= '<col style="width:7cm;">';
+        $html .= '<col style="width:4cm;">';
+        $html .= '<col style="width:3cm;">';
+        $html .= '<col style="width:2.8cm;">';
+        $html .= '<col style="width:1.8cm;">';
+        $html .= '</colgroup>';
+        $html .= '<thead><tr>';
+        foreach ($headers as $h) {
+            $label = $h === 'Entidade' ? 'Fornecedor' : $h;
+            $html .= '<th class="head-pagar">' . htmlspecialchars($label) . '</th>';
+        }
+        $html .= '</tr></thead><tbody>';
+        if (empty($rowsPagar)) {
+            $html .= '<tr><td colspan="' . count($headers) . '" class="vazio">Nenhuma conta a pagar atrasada.</td></tr>';
+        } else {
+            foreach ($rowsPagar as $row) {
+                $rowShow = $row;
+                unset($rowShow['__raw__']);
+                $html .= '<tr>';
+                foreach ($rowShow as $cell) $html .= '<td>' . htmlspecialchars((string)$cell) . '</td>';
+                $html .= '</tr>';
+            }
+        }
+        $html .= '</tbody>';
+        if (!empty($rowsPagar)) {
+            $html .= '<tfoot><tr class="subtotal-pagar">';
+            $html .= '<th colspan="4" style="text-align:right;">SUBTOTAL A PAGAR (atrasado):</th>';
+            $html .= '<th class="valor">R$ ' . number_format($sep['pagar']['valor'], 2, ',', '.') . '</th>';
+            $html .= '<th>' . $sep['pagar']['qtd'] . ' conta(s)</th>';
+            $html .= '</tr></tfoot>';
+        }
+        $html .= '</table>';
+
+        // --- Tabela RECEBER ---
+        $html .= '<h2 style="color: #166534;">🟢 Contas a Receber Atrasadas</h2>';
+        $html .= '<table class="dados">';
+        $html .= '<colgroup>';
+        $html .= '<col style="width:2.5cm;">';
+        $html .= '<col style="width:7cm;">';
+        $html .= '<col style="width:4cm;">';
+        $html .= '<col style="width:3cm;">';
+        $html .= '<col style="width:2.8cm;">';
+        $html .= '<col style="width:1.8cm;">';
+        $html .= '</colgroup>';
+        $html .= '<thead><tr>';
+        foreach ($headers as $h) {
+            $label = $h === 'Entidade' ? 'Cliente' : $h;
+            $html .= '<th class="head-receber">' . htmlspecialchars($label) . '</th>';
+        }
+        $html .= '</tr></thead><tbody>';
+        if (empty($rowsReceber)) {
+            $html .= '<tr><td colspan="' . count($headers) . '" class="vazio">Nenhuma conta a receber atrasada.</td></tr>';
+        } else {
+            foreach ($rowsReceber as $row) {
+                $rowShow = $row;
+                unset($rowShow['__raw__']);
+                $html .= '<tr>';
+                foreach ($rowShow as $cell) $html .= '<td>' . htmlspecialchars((string)$cell) . '</td>';
+                $html .= '</tr>';
+            }
+        }
+        $html .= '</tbody>';
+        if (!empty($rowsReceber)) {
+            $html .= '<tfoot><tr class="subtotal-receber">';
+            $html .= '<th colspan="4" style="text-align:right;">SUBTOTAL A RECEBER (atrasado):</th>';
+            $html .= '<th class="valor">R$ ' . number_format($sep['receber']['valor'], 2, ',', '.') . '</th>';
+            $html .= '<th>' . $sep['receber']['qtd'] . ' conta(s)</th>';
+            $html .= '</tr></tfoot>';
+        }
+        $html .= '</table>';
+
+        // --- TOTAL GERAL ---
+        $html .= '<div class="total-geral">';
+        $html .= '<div>';
+        $html .= '<div class="label">📊 TOTAL GERAL ATRASADO</div>';
+        $html .= '<div class="sub">' . $sep['pagar']['qtd'] . ' a pagar + ' . $sep['receber']['qtd'] . ' a receber = ' . $totalQtd . ' conta(s)</div>';
+        $html .= '</div>';
+        $html .= '<div style="text-align:right;">';
+        $html .= '<div class="valor">R$ ' . number_format($sep['pagar']['valor'] + $sep['receber']['valor'], 2, ',', '.') . '</div>';
+        $html .= '<div class="sub">Saldo previsto: R$ ' . number_format($saldo, 2, ',', '.') . '</div>';
+        $html .= '</div>';
+        $html .= '</div>';
+
+        $html .= '</body></html>';
         return $html;
     }
 }

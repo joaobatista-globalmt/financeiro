@@ -64,6 +64,7 @@ function layout(string $titulo, string $view, array $vars = []): void
     // Usa variáveis com prefixo _ pra não colidir com as do controller
     $currentUser = Auth::user();
     $currentFlash = Flash::get();
+    $flash = $currentFlash; // alias usado pelo header.php
 
     require FINANCEIRO_SRC . '/views/layout/header.php';
     require FINANCEIRO_SRC . '/views/layout/navbar.php';

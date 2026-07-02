@@ -116,7 +116,18 @@ $ehRecebido = $status === 'recebida';
         <textarea name="observacoes" rows="3"><?= htmlspecialchars($conta['observacoes'] ?? '') ?></textarea>
     </div>
 
-    <?php if ($conta && in_array($status, ['pendente', 'aprovada'], true) && Permissao::tem('receber')): ?>
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Salvar</button>
+        <a href="contas_receber.php" class="btn">Cancelar</a>
+    </div>
+</form>
+
+<?php if ($conta && in_array($status, ['pendente', 'aprovada'], true) && Permissao::tem('receber')): ?>
+<!-- Form SEPARADO para registrar recebimento (não conflita com edição da conta) -->
+<form method="post" action="conta_receber_acao.php" class="form payment-form" style="margin-top: 24px; border-top: 2px dashed #cbd5e1; padding-top: 20px;">
+    <input type="hidden" name="id" value="<?= (int)$conta['id'] ?>">
+    <input type="hidden" name="acao" value="receber">
+
     <fieldset id="receber" class="payment-section">
         <legend>💰 Registrar Recebimento</legend>
         <div class="row">
@@ -141,13 +152,11 @@ $ehRecebido = $status === 'recebida';
             </div>
         </div>
     </fieldset>
-    <?php endif; ?>
-
     <div class="form-actions">
-        <button type="submit" class="btn btn-primary">Salvar</button>
-        <a href="contas_receber.php" class="btn">Cancelar</a>
+        <button type="submit" class="btn btn-success">💰 Confirmar Recebimento</button>
     </div>
 </form>
+<?php endif; ?>
 
 <?php if ($ehRecebido): ?>
 <div class="alert alert-info">

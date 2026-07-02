@@ -158,6 +158,7 @@ final class ContasReceberController
                 // Edição simples (não mexe em parcelas já geradas — só na conta-pai)
                 $dados = $this->coletarDadosFormulario($empresaId);
                 $dados['id'] = $id;
+                $dados['empresa_id'] = $empresaId;
                 $stmt = $db->prepare('
                     UPDATE contas_receber SET
                         cliente_id=:cliente_id, categoria_id=:categoria_id, descricao=:descricao,

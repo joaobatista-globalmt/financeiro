@@ -146,7 +146,8 @@ final class ContasPagarController
         try {
             if ($id > 0) {
                 $dados = $this->coletarDadosFormulario($empresaId);
-                $dados['id'] = $id;
+                $dados['id']         = $id;
+                $dados['empresa_id'] = $empresaId;
                 $stmt = $db->prepare('
                     UPDATE contas_pagar SET
                         fornecedor_id=:fornecedor_id, categoria_id=:categoria_id, descricao=:descricao,

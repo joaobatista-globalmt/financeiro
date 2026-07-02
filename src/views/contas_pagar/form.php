@@ -118,7 +118,24 @@ $ehPago = $status === 'paga';
         <textarea name="observacoes" rows="3"><?= htmlspecialchars($conta['observacoes'] ?? '') ?></textarea>
     </div>
 
-    <?php if ($conta && in_array($status, ['pendente', 'aprovada'], true) && Permissao::tem('pagar')): ?>
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Salvar</button>
+        <?php if ($conta && Permissao::tem('excluir') && $status !== 'paga'): ?>
+            <button type="submit" formaction="conta_acao.php" formmethod="post"
+                    onclick="return confirm('Excluir esta conta?')"
+                    class="btn btn-danger">Excluir</button>
+            <input type="hidden" name="_method" value="DELETE">
+        <?php endif; ?>
+        <a href="contas_pagar.php" class="btn">Cancelar</a>
+    </div>
+</form>
+
+<?php if ($conta && in_array($status, ['pendente', 'aprovada'], true) && Permissao::tem('pagar')): ?>
+<!-- Form SEPARADO para registrar pagamento (não conflita com edição da conta) -->
+<form method="post" action="conta_acao.php" class="form payment-form" style="margin-top: 24px; border-top: 2px dashed #cbd5e1; padding-top: 20px;">
+    <input type="hidden" name="id" value="<?= (int)$conta['id'] ?>">
+    <input type="hidden" name="acao" value="pagar">
+
     <fieldset id="pagar" class="payment-section">
         <legend>💰 Registrar Pagamento</legend>
         <div class="row">
@@ -144,19 +161,11 @@ $ehPago = $status === 'paga';
             </div>
         </div>
     </fieldset>
-    <?php endif; ?>
-
     <div class="form-actions">
-        <button type="submit" class="btn btn-primary">Salvar</button>
-        <?php if ($conta && Permissao::tem('excluir') && $status !== 'paga'): ?>
-            <button type="submit" formaction="conta_acao.php" formmethod="post"
-                    onclick="return confirm('Excluir esta conta?')"
-                    class="btn btn-danger">Excluir</button>
-            <input type="hidden" name="_method" value="DELETE">
-        <?php endif; ?>
-        <a href="contas_pagar.php" class="btn">Cancelar</a>
+        <button type="submit" class="btn btn-success">💰 Confirmar Pagamento</button>
     </div>
 </form>
+<?php endif; ?>
 
 <?php if ($ehPago): ?>
 <div class="alert alert-info">

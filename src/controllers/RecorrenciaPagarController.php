@@ -98,7 +98,6 @@ final class RecorrenciaPagarController
             'data_fim'         => $_POST['data_fim'] ?? null ?: null,
             'observacoes'      => trim($_POST['observacoes'] ?? '') ?: null,
             'ativa'            => isset($_POST['ativa']) ? 1 : 1,
-            'usuario_criacao_id' => Auth::user()['id'],
         ];
 
         $db = Database::getConnection();
@@ -120,6 +119,7 @@ final class RecorrenciaPagarController
                 Flash::set('sucesso', 'Recorrência atualizada.');
             } else {
                 $dados['empresa_id'] = $empresaId;
+                $dados['usuario_criacao_id'] = Auth::user()['id'];
                 // Próxima geração = primeiro dia de vencimento >= hoje
                 $dados['proxima_geracao'] = self::calcularProximaGeracao($dados['data_inicio'], $dia);
                 $stmt = $db->prepare('

@@ -97,7 +97,6 @@ final class RecorrenciaReceberController
             'data_fim'          => $_POST['data_fim'] ?? null ?: null,
             'observacoes'       => trim($_POST['observacoes'] ?? '') ?: null,
             'ativa'             => 1,
-            'usuario_criacao_id' => Auth::user()['id'],
         ];
 
         $db = Database::getConnection();
@@ -119,6 +118,7 @@ final class RecorrenciaReceberController
                 Flash::set('sucesso', 'Recorrência atualizada.');
             } else {
                 $dados['empresa_id'] = $empresaId;
+                $dados['usuario_criacao_id'] = Auth::user()['id'];
                 $dados['proxima_geracao'] = RecorrenciaPagarController::calcularProximaGeracao($dados['data_inicio'], $dia);
                 $stmt = $db->prepare('
                     INSERT INTO contas_receber_recorrencia

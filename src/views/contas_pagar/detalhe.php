@@ -5,7 +5,12 @@
 ?>
 <div class="page-header">
     <h1>Conta a Pagar #<?= (int)$conta['id'] ?></h1>
-    <a href="contas_pagar.php" class="btn">← Voltar</a>
+    <div>
+        <?php if ($conta['status'] !== 'paga' && $conta['status'] !== 'cancelada' && Permissao::tem('criar')): ?>
+            <a href="conta_form.php?id=<?= (int)$conta['id'] ?>" class="btn btn-primary">✏️ Editar Conta</a>
+        <?php endif; ?>
+        <a href="contas_pagar.php" class="btn">← Voltar</a>
+    </div>
 </div>
 
 <div class="detail-grid">

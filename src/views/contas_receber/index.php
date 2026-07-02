@@ -125,6 +125,9 @@
                 </td>
                 <td class="actions">
                     <a href="conta_receber_detalhe.php?id=<?= (int)$c['id'] ?>" class="btn btn-sm">Ver</a>
+                    <?php if ($c['status'] !== 'recebida' && $c['status'] !== 'cancelada' && Permissao::tem('criar')): ?>
+                        <a href="conta_receber_form.php?id=<?= (int)$c['id'] ?>" class="btn btn-sm" title="Editar dados da conta (descrição, valor, cliente, datas, etc)">✏️ Editar</a>
+                    <?php endif; ?>
                     <?php if ($c['status'] === 'pendente' && Permissao::tem('aprovar')): ?>
                         <form method="post" action="conta_receber_acao.php" style="display:inline">
                             <input type="hidden" name="id" value="<?= (int)$c['id'] ?>">

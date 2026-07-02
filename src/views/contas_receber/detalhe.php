@@ -88,6 +88,10 @@
         <a href="conta_receber_form.php?id=<?= (int)$conta['id'] ?>#receber" class="btn btn-success">💰 Receber</a>
     <?php endif; ?>
 
+    <?php if ($conta['status'] === 'recebida' && Permissao::tem('criar')): ?>
+        <a href="editar_recebimento.php?id=<?= (int)$conta['id'] ?>" class="btn">✏️ Editar Recebimento</a>
+    <?php endif; ?>
+
     <?php if ($conta['status'] !== 'recebida' && $conta['status'] !== 'cancelada'): ?>
         <form method="post" action="conta_receber_acao.php" style="display:inline" onsubmit="return confirm('Cancelar esta conta?')">
             <input type="hidden" name="id" value="<?= (int)$conta['id'] ?>">

@@ -112,6 +112,10 @@
         <a href="conta_form.php?id=<?= (int)$conta['id'] ?>#pagar" class="btn btn-success">💰 Pagar</a>
     <?php endif; ?>
 
+    <?php if ($conta['status'] === 'paga' && Permissao::tem('criar')): ?>
+        <a href="editar_pagamento.php?id=<?= (int)$conta['id'] ?>" class="btn">✏️ Editar Pagamento</a>
+    <?php endif; ?>
+
     <?php if ($conta['status'] !== 'paga' && $conta['status'] !== 'cancelada'): ?>
         <form method="post" action="conta_acao.php" style="display:inline" onsubmit="return confirm('Cancelar esta conta?')">
             <input type="hidden" name="id" value="<?= (int)$conta['id'] ?>">

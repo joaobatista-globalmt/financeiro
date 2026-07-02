@@ -378,6 +378,159 @@ final class ContasPagarController
         redirect('contas_pagar.php');
     }
 
+    /**
+     * GET /editar_pagamento.php?id=N
+     * Form para editar pagamento de uma conta a pagar já PAGA.
+     */
+    public function editarPagamento(): void
+    {
+        Auth::require();
+        Permissao::requer('criar', 'contas_pagar.php');
+        $id = (int)($_GET['id'] ?? 0);
+        $empresaId = Auth::user()['empresa_id'];
+
+        if ($id <= 0) {
+            redirect('contas_pagar.php');
+        }
+
+        $db = Database::getConnection();
+        $stmt = $db->prepare('
+            SELECT cp.*, f.razao_social AS fornecedor_nome,
+                   cb.descricao AS conta_bancaria_descricao
+            FROM contas_pagar cp
+            JOIN fornecedores f ON f.id = cp.fornecedor_id
+            LEFT JOIN contas_bancarias cb ON cb.id = cp.conta_bancaria_id
+            WHERE cp.id = ? AND cp.empresa_id = ?
+        ');
+        $stmt->execute([$id, $empresaId]);
+        $conta = $stmt->fetch();
+
+        if (!$conta) {
+            Flash::set('erro', 'Conta não encontrada.');
+            redirect('contas_pagar.php');
+        }
+
+        if ($conta['status'] !== 'paga') {
+            Flash::set('erro', 'Só é possível editar pagamento de contas já pagas. Status atual: ' . $conta['status']);
+            redirect("conta_detalhe.php?id=$id");
+        }
+
+        // Lista contas bancárias ativas
+        $stmtCb = $db->prepare('
+            SELECT id, descricao, tipo, banco FROM contas_bancarias
+            WHERE empresa_id = ? AND ativo = 1
+            ORDER BY descricao
+        ');
+        $stmtCb->execute([$empresaId]);
+        $contasBanco = $stmtCb->fetchAll();
+
+        layout('Editar Pagamento', 'contas_pagar/editar_pagamento.php', [
+            'conta'       => $conta,
+            'contasBanco' => $contasBanco,
+        ]);
+    }
+
+    /**
+     * POST /editar_pagamento.php (Contas a Pagar)
+     * Salva edição do pagamento (data, valor, conta, forma).
+     * Atualiza também a movimentação bancária correspondente.
+     */
+    public function salvarEdicaoPagamento(): void
+    {
+        Auth::require();
+        Permissao::requer('criar', 'contas_pagar.php');
+        $id = (int)($_POST['id'] ?? 0);
+        $empresaId = Auth::user()['empresa_id'];
+
+        if ($id <= 0) {
+            Flash::set('erro', 'ID inválido.');
+            redirect('contas_pagar.php');
+        }
+
+        $novaData     = $_POST['data_pagamento'] ?? '';
+        $novoValor    = (float)str_replace(',', '.', $_POST['valor_pago'] ?? 0);
+        $novaContaId  = (int)($_POST['conta_bancaria_id'] ?? 0);
+        $novaForma    = $_POST['forma_pagamento'] ?? '';
+
+        if (empty($novaData) || $novoValor <= 0 || $novaContaId <= 0) {
+            Flash::set('erro', 'Preencha data, valor e conta bancária.');
+            redirect("editar_pagamento.php?id=$id");
+        }
+        if (!in_array($novaForma, ['boleto','pix','transferencia','dinheiro','cartao','cheque','outros'], true)) {
+            Flash::set('erro', 'Forma de pagamento inválida.');
+            redirect("editar_pagamento.php?id=$id");
+        }
+
+        $db = Database::getConnection();
+        $db->beginTransaction();
+
+        try {
+            // Carrega a conta
+            $stmt = $db->prepare('SELECT * FROM contas_pagar WHERE id = ? AND empresa_id = ? FOR UPDATE');
+            $stmt->execute([$id, $empresaId]);
+            $conta = $stmt->fetch();
+
+            if (!$conta) {
+                throw new \RuntimeException('Conta não encontrada.');
+            }
+            if ($conta['status'] !== 'paga') {
+                throw new \RuntimeException('Só é possível editar pagamento de contas já pagas.');
+            }
+
+            // Verifica conta bancária
+            $stmtCb = $db->prepare('SELECT id FROM contas_bancarias WHERE id = ? AND empresa_id = ?');
+            $stmtCb->execute([$novaContaId, $empresaId]);
+            if (!$stmtCb->fetch()) {
+                throw new \RuntimeException('Conta bancária inválida.');
+            }
+
+            // Atualiza a conta
+            $stmtU = $db->prepare('
+                UPDATE contas_pagar SET
+                    data_pagamento = :data_pagamento,
+                    valor_pago = :valor_pago,
+                    conta_bancaria_id = :conta_bancaria_id,
+                    forma_pagamento = :forma_pagamento
+                WHERE id = :id AND empresa_id = :empresa_id
+            ');
+            $stmtU->execute([
+                'data_pagamento'    => $novaData,
+                'valor_pago'        => $novoValor,
+                'conta_bancaria_id' => $novaContaId,
+                'forma_pagamento'   => $novaForma,
+                'id'                => $id,
+                'empresa_id'        => $empresaId,
+            ]);
+
+            // Atualiza movimentação bancária (se vinculada)
+            $stmtM = $db->prepare('
+                UPDATE movimentacoes_bancarias SET
+                    conta_bancaria_id = :conta_bancaria_id,
+                    data_movimento = :data_movimento,
+                    valor = :valor,
+                    descricao = :descricao
+                WHERE conta_pagar_id = :id AND empresa_id = :empresa_id
+            ');
+            $stmtM->execute([
+                'conta_bancaria_id' => $novaContaId,
+                'data_movimento'    => $novaData,
+                'valor'             => $novoValor,
+                'descricao'         => 'Pagamento: ' . $conta['descricao'],
+                'id'                => $id,
+                'empresa_id'        => $empresaId,
+            ]);
+
+            $db->commit();
+            Flash::set('sucesso', 'Pagamento editado (conta e movimentação bancária atualizadas).');
+            redirect("conta_detalhe.php?id=$id");
+        } catch (\Throwable $e) {
+            $db->rollBack();
+            error_log('[ContasPagar] Erro ao editar pagamento: ' . $e->getMessage());
+            Flash::set('erro', 'Erro: ' . $e->getMessage());
+            redirect("editar_pagamento.php?id=$id");
+        }
+    }
+
     public function detalhe(): void
     {
         Auth::require();

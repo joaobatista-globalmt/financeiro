@@ -383,6 +383,159 @@ final class ContasReceberController
         redirect('contas_receber.php');
     }
 
+    /**
+     * GET /editar_recebimento.php?id=N
+     * Form para editar recebimento de uma conta a receber já RECEBIDA.
+     */
+    public function editarRecebimento(): void
+    {
+        Auth::require();
+        Permissao::requer('criar', 'contas_receber.php');
+        $id = (int)($_GET['id'] ?? 0);
+        $empresaId = Auth::user()['empresa_id'];
+
+        if ($id <= 0) {
+            redirect('contas_receber.php');
+        }
+
+        $db = Database::getConnection();
+        $stmt = $db->prepare('
+            SELECT cr.*, c.razao_social AS cliente_nome,
+                   cb.descricao AS conta_bancaria_descricao
+            FROM contas_receber cr
+            JOIN clientes c ON c.id = cr.cliente_id
+            LEFT JOIN contas_bancarias cb ON cb.id = cr.conta_bancaria_id
+            WHERE cr.id = ? AND cr.empresa_id = ?
+        ');
+        $stmt->execute([$id, $empresaId]);
+        $conta = $stmt->fetch();
+
+        if (!$conta) {
+            Flash::set('erro', 'Conta não encontrada.');
+            redirect('contas_receber.php');
+        }
+
+        if ($conta['status'] !== 'recebida') {
+            Flash::set('erro', 'Só é possível editar recebimento de contas já recebidas. Status atual: ' . $conta['status']);
+            redirect("conta_receber_detalhe.php?id=$id");
+        }
+
+        // Lista contas bancárias ativas
+        $stmtCb = $db->prepare('
+            SELECT id, descricao, tipo, banco FROM contas_bancarias
+            WHERE empresa_id = ? AND ativo = 1
+            ORDER BY descricao
+        ');
+        $stmtCb->execute([$empresaId]);
+        $contasBanco = $stmtCb->fetchAll();
+
+        layout('Editar Recebimento', 'contas_receber/editar_recebimento.php', [
+            'conta'       => $conta,
+            'contasBanco' => $contasBanco,
+        ]);
+    }
+
+    /**
+     * POST /editar_recebimento.php (Contas a Receber)
+     * Salva edição do recebimento (data, valor, conta, forma).
+     * Atualiza também a movimentação bancária correspondente.
+     */
+    public function salvarEdicaoRecebimento(): void
+    {
+        Auth::require();
+        Permissao::requer('criar', 'contas_receber.php');
+        $id = (int)($_POST['id'] ?? 0);
+        $empresaId = Auth::user()['empresa_id'];
+
+        if ($id <= 0) {
+            Flash::set('erro', 'ID inválido.');
+            redirect('contas_receber.php');
+        }
+
+        $novaData     = $_POST['data_recebimento'] ?? '';
+        $novoValor    = (float)str_replace(',', '.', $_POST['valor_recebido'] ?? 0);
+        $novaContaId  = (int)($_POST['conta_bancaria_id'] ?? 0);
+        $novaForma    = $_POST['forma_recebimento'] ?? '';
+
+        if (empty($novaData) || $novoValor <= 0 || $novaContaId <= 0) {
+            Flash::set('erro', 'Preencha data, valor e conta bancária.');
+            redirect("editar_recebimento.php?id=$id");
+        }
+        if (!in_array($novaForma, ['boleto','pix','transferencia','dinheiro','cartao','cheque','outros'], true)) {
+            Flash::set('erro', 'Forma de recebimento inválida.');
+            redirect("editar_recebimento.php?id=$id");
+        }
+
+        $db = Database::getConnection();
+        $db->beginTransaction();
+
+        try {
+            // Carrega a conta
+            $stmt = $db->prepare('SELECT * FROM contas_receber WHERE id = ? AND empresa_id = ? FOR UPDATE');
+            $stmt->execute([$id, $empresaId]);
+            $conta = $stmt->fetch();
+
+            if (!$conta) {
+                throw new \RuntimeException('Conta não encontrada.');
+            }
+            if ($conta['status'] !== 'recebida') {
+                throw new \RuntimeException('Só é possível editar recebimento de contas já recebidas.');
+            }
+
+            // Verifica conta bancária
+            $stmtCb = $db->prepare('SELECT id FROM contas_bancarias WHERE id = ? AND empresa_id = ?');
+            $stmtCb->execute([$novaContaId, $empresaId]);
+            if (!$stmtCb->fetch()) {
+                throw new \RuntimeException('Conta bancária inválida.');
+            }
+
+            // Atualiza a conta
+            $stmtU = $db->prepare('
+                UPDATE contas_receber SET
+                    data_recebimento = :data_recebimento,
+                    valor_recebido = :valor_recebido,
+                    conta_bancaria_id = :conta_bancaria_id,
+                    forma_recebimento = :forma_recebimento
+                WHERE id = :id AND empresa_id = :empresa_id
+            ');
+            $stmtU->execute([
+                'data_recebimento'  => $novaData,
+                'valor_recebido'    => $novoValor,
+                'conta_bancaria_id' => $novaContaId,
+                'forma_recebimento' => $novaForma,
+                'id'                => $id,
+                'empresa_id'        => $empresaId,
+            ]);
+
+            // Atualiza movimentação bancária (se vinculada)
+            $stmtM = $db->prepare('
+                UPDATE movimentacoes_bancarias SET
+                    conta_bancaria_id = :conta_bancaria_id,
+                    data_movimento = :data_movimento,
+                    valor = :valor,
+                    descricao = :descricao
+                WHERE conta_receber_id = :id AND empresa_id = :empresa_id
+            ');
+            $stmtM->execute([
+                'conta_bancaria_id' => $novaContaId,
+                'data_movimento'    => $novaData,
+                'valor'             => $novoValor,
+                'descricao'         => 'Recebimento: ' . $conta['descricao'],
+                'id'                => $id,
+                'empresa_id'        => $empresaId,
+            ]);
+
+            $db->commit();
+            Flash::set('sucesso', 'Recebimento editado (conta e movimentação bancária atualizadas).');
+            redirect("conta_receber_detalhe.php?id=$id");
+        } catch (\Throwable $e) {
+            $db->rollBack();
+            error_log('[ContasReceber] Erro ao editar recebimento: ' . $e->getMessage());
+            Flash::set('erro', 'Erro: ' . $e->getMessage());
+            redirect("editar_recebimento.php?id=$id");
+        }
+    }
+
     public function detalhe(): void
     {
         Auth::require();

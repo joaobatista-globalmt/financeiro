@@ -229,9 +229,15 @@ final class MovimentacoesController
                         descricao=:descricao
                     WHERE id=:id AND empresa_id=:empresa_id AND origem="manual"
                 ');
-                $dados['id'] = $id;
-                $dados['empresa_id'] = $empresaId;
-                $stmt->execute($dados);
+                $stmt->execute([
+                    'conta_bancaria_id' => $contaId,
+                    'data_movimento'    => $_POST['data_movimento'],
+                    'tipo'              => $_POST['tipo'],
+                    'valor'             => (float)str_replace(',', '.', $_POST['valor']),
+                    'descricao'         => trim($_POST['descricao']),
+                    'id'                => $id,
+                    'empresa_id'        => $empresaId,
+                ]);
                 Flash::set('sucesso', 'Movimentação atualizada.');
             } else {
                 // Criação
@@ -243,7 +249,6 @@ final class MovimentacoesController
                         (:empresa_id, :conta_bancaria_id, :data_movimento, :tipo, :origem,
                          :valor, :descricao, :usuario_id)
                 ');
-                $dados['empresa_id'] = $empresaId;
                 $stmt->execute($dados);
                 Flash::set('sucesso', 'Movimentação lançada.');
             }

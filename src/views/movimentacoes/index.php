@@ -77,12 +77,13 @@
             <th>Origem</th>
             <th>Usuário</th>
             <th class="text-right">Valor</th>
+            <th class="text-right">Saldo</th>
             <th>Ações</th>
         </tr>
     </thead>
     <tbody>
         <?php if (empty($movs)): ?>
-            <tr><td colspan="7" class="muted center">Nenhuma movimentação no período.</td></tr>
+            <tr><td colspan="8" class="muted center">Nenhuma movimentação no período.</td></tr>
         <?php else: foreach ($movs as $m): ?>
             <tr>
                 <td><?= dataIsoParaBr($m['data_movimento']) ?></td>
@@ -96,6 +97,9 @@
                 <td><small><?= htmlspecialchars($m['usuario_nome']) ?></small></td>
                 <td class="text-right <?= $m['tipo'] === 'entrada' ? 'text-success' : 'text-danger' ?>">
                     <?= $m['tipo'] === 'entrada' ? '+' : '-' ?> R$ <?= number_format((float)$m['valor'], 2, ',', '.') ?>
+                </td>
+                <td class="text-right <?= $m['saldo_apos'] >= 0 ? 'text-success' : 'text-danger' ?>" style="font-variant-numeric: tabular-nums; font-weight: 600;">
+                    R$ <?= number_format((float)$m['saldo_apos'], 2, ',', '.') ?>
                 </td>
                 <td class="actions">
                     <?php if ($m['origem'] === 'manual' && Permissao::tem('criar')): ?>

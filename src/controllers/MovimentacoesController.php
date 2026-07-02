@@ -89,6 +89,32 @@ final class MovimentacoesController
             return $movs[$k]['tipo'] === 'saida';
         }, ARRAY_FILTER_USE_BOTH));
 
+        // Calcula o saldo APÓS cada movimentação (coluna "Saldo" do extrato).
+        // Estrategia: o saldo por linha = saldo imediatamente ANTES do filtro
+        // (data_inicio - 1) + somatorio acumulado das movs do periodo.
+        // Como as movs vem em DESC, invertemos pra calcular o saldo
+        // cronologicamente, e depois guardamos num array indexado pelo id.
+        $saldoAteInicio = ContasBancariasController::calcularSaldo(
+            $contaId,
+            date('Y-m-d', strtotime($dataInicio . ' -1 day'))
+        );
+        $movsCrescente = array_reverse($movs);
+        $saldosPorId = [];
+        $saldoAcumulado = $saldoAteInicio;
+        foreach ($movsCrescente as $m) {
+            if ($m['tipo'] === 'entrada') {
+                $saldoAcumulado += (float)$m['valor'];
+            } else {
+                $saldoAcumulado -= (float)$m['valor'];
+            }
+            $saldosPorId[(int)$m['id']] = $saldoAcumulado;
+        }
+        // Anota o saldo em cada mov (mantem a ordem DESC original)
+        foreach ($movs as &$m) {
+            $m['saldo_apos'] = $saldosPorId[(int)$m['id']];
+        }
+        unset($m);
+
         layout('Extrato - ' . $conta['descricao'], 'movimentacoes/index.php', [
             'conta'         => $conta,
             'movs'          => $movs,
@@ -96,6 +122,7 @@ final class MovimentacoesController
             'saldoPeriodo'  => $saldoPeriodo,
             'totalEntradas' => $totalEntradas,
             'totalSaidas'   => $totalSaidas,
+            'saldoAteInicio' => $saldoAteInicio,
             'filtros'       => [
                 'data_inicio' => $dataInicio,
                 'data_fim'    => $dataFim,

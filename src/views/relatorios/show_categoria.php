@@ -18,14 +18,37 @@ uasort($grupos, function ($a, $b) {
 <div class="page-header">
     <h1><?= htmlspecialchars($dados['titulo']) ?></h1>
     <div>
-        <a href="relatorio_exportar.php?tipo=<?= urlencode($tipo) ?>&formato=csv&data_inicio=<?= urlencode($dataInicio) ?>&data_fim=<?= urlencode($dataFim) ?>" class="btn">📥 CSV</a>
-        <a href="relatorio_exportar.php?tipo=<?= urlencode($tipo) ?>&formato=pdf&data_inicio=<?= urlencode($dataInicio) ?>&data_fim=<?= urlencode($dataFim) ?>" class="btn">📄 PDF</a>
+        <a href="relatorio_exportar.php?tipo=<?= urlencode($tipo) ?>&formato=csv&data_inicio=<?= urlencode($dataInicio) ?>&data_fim=<?= urlencode($dataFim) ?><?= !empty($statusFiltro) ? '&status[]=' . implode('&status[]=', array_map('urlencode', $statusFiltro)) : '' ?>" class="btn">📥 CSV</a>
+        <a href="relatorio_exportar.php?tipo=<?= urlencode($tipo) ?>&formato=pdf&data_inicio=<?= urlencode($dataInicio) ?>&data_fim=<?= urlencode($dataFim) ?><?= !empty($statusFiltro) ? '&status[]=' . implode('&status[]=', array_map('urlencode', $statusFiltro)) : '' ?>" class="btn">📄 PDF</a>
         <a href="relatorios.php" class="btn">← Voltar</a>
     </div>
 </div>
 
 <form method="get" class="filters-bar">
     <input type="hidden" name="tipo" value="<?= htmlspecialchars($tipo) ?>">
+
+    <div class="form-group" style="min-width: 260px;">
+        <label>Status (vazio = todos)</label>
+        <div style="display: flex; gap: 12px; flex-wrap: wrap; padding: 4px 0;">
+            <?php
+            $statusOptionsCat = [
+                'pendente'  => 'Pendente',
+                'aprovada'  => 'Aprovada',
+                'paga'      => 'Paga',
+                'recebida'  => 'Recebida',
+                'cancelada' => 'Cancelada',
+            ];
+            $statusFiltroCat = $statusFiltro ?? [];
+            foreach ($statusOptionsCat as $val => $label): ?>
+                <label style="display: flex; align-items: center; gap: 4px; font-weight: normal; cursor: pointer; margin: 0;">
+                    <input type="checkbox" name="status[]" value="<?= htmlspecialchars($val) ?>"
+                        <?= in_array($val, $statusFiltroCat) ? 'checked' : '' ?>>
+                    <?= htmlspecialchars($label) ?>
+                </label>
+            <?php endforeach; ?>
+        </div>
+    </div>
+
     <div class="form-group">
         <label>De</label>
         <input type="date" name="data_inicio" value="<?= htmlspecialchars($dataInicio) ?>">
@@ -35,6 +58,7 @@ uasort($grupos, function ($a, $b) {
         <input type="date" name="data_fim" value="<?= htmlspecialchars($dataFim) ?>">
     </div>
     <button type="submit" class="btn btn-primary">Aplicar</button>
+    <a href="relatorio_show.php?tipo=<?= urlencode($tipo) ?>" class="btn">Limpar</a>
 </form>
 
 <?php

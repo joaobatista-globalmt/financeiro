@@ -66,6 +66,16 @@ final class RelatorioController
                 ]);
                 return;
             case 'categoria':
+                $dados = $this->relatorioCategoria($empresaId, $dataInicio, $dataFim, $statusFiltro);
+                layout('Relatório: ' . $tipo, 'relatorios/show_categoria.php', [
+                    'tipo'         => $tipo,
+                    'dados'        => $dados,
+                    'dataInicio'   => $dataInicio,
+                    'dataFim'      => $dataFim,
+                    'statusFiltro' => $statusFiltro,
+                ]);
+                return;
+            case 'categoria':
                 $dados = $this->relatorioCategoria($empresaId, $dataInicio, $dataFim);
                 layout('Relatório: ' . $tipo, 'relatorios/show_categoria.php', [
                     'tipo'       => $tipo,
@@ -208,7 +218,7 @@ final class RelatorioController
         switch ($tipo) {
             case 'contas_pagar':   $dados = $this->relatorioContasPagar($empresaId, $dataInicio, $dataFim, $statusFiltro); break;
             case 'contas_receber': $dados = $this->relatorioContasReceber($empresaId, $dataInicio, $dataFim, $statusFiltro); break;
-            case 'categoria':   $dados = $this->relatorioCategoria($empresaId, $dataInicio, $dataFim); break;
+            case 'categoria':   $dados = $this->relatorioCategoria($empresaId, $dataInicio, $dataFim, $statusFiltro); break;
             case 'fornecedor':  $dados = $this->relatorioFornecedor($empresaId, $dataInicio, $dataFim, $statusFiltro, $nomeFiltro); break;
             case 'cliente':     $dados = $this->relatorioCliente($empresaId, $dataInicio, $dataFim, $statusFiltro, $nomeFiltro); break;
             case 'fluxo_caixa': $dados = $this->relatorioFluxoCaixa($empresaId, $dataInicio, $dataFim); break;
@@ -463,11 +473,21 @@ final class RelatorioController
      *  - totais_separados: { pagar: [...], receber: [...] }
      *  - totais: total geral (mantido pra compat com show.php e CSV)
      */
-    private function relatorioCategoria(int $empresaId, string $dataInicio, string $dataFim): array
+    private function relatorioCategoria(int $empresaId, string $dataInicio, string $dataFim, array $statusFiltro = []): array
     {
         $db = Database::getConnection();
 
-        $stmtPagar = $db->prepare('
+        // Status validos (PAGAR e RECEBER compartilham a maioria, mas "paga" e "recebida" sao diferentes)
+        $statusValidos = ['pendente', 'aprovada', 'paga', 'recebida', 'cancelada'];
+        $statusAplicado = array_values(array_intersect($statusFiltro, $statusValidos));
+
+        // Para PAGAR, aplica apenas status compativeis (exclui "recebida")
+        $statusPagar = array_values(array_intersect($statusAplicado, ['pendente', 'aprovada', 'paga', 'cancelada']));
+        // Para RECEBER, aplica apenas status compativeis (exclui "paga")
+        $statusReceber = array_values(array_intersect($statusAplicado, ['pendente', 'aprovada', 'recebida', 'cancelada']));
+
+        // ---- QUERY PAGAR ----
+        $sqlPagar = '
             SELECT cp.id, cp.data_vencimento, cp.descricao, f.razao_social AS entidade,
                    cp.valor, cp.valor_pago, cp.status,
                    cat.id AS categoria_id, cat.nome AS categoria, cat.cor AS categoria_cor,
@@ -476,12 +496,20 @@ final class RelatorioController
             JOIN fornecedores f ON f.id = cp.fornecedor_id
             JOIN categorias cat ON cat.id = cp.categoria_id
             WHERE cp.empresa_id = ? AND cp.data_vencimento BETWEEN ? AND ?
-            ORDER BY cat.nome, cp.data_vencimento, cp.id
-        ');
-        $stmtPagar->execute([$empresaId, $dataInicio, $dataFim]);
+        ';
+        $paramsPagar = [$empresaId, $dataInicio, $dataFim];
+        if (!empty($statusPagar)) {
+            $placeholders = implode(',', array_fill(0, count($statusPagar), '?'));
+            $sqlPagar .= " AND cp.status IN ($placeholders)";
+            foreach ($statusPagar as $s) $paramsPagar[] = $s;
+        }
+        $sqlPagar .= ' ORDER BY cat.nome, cp.data_vencimento, cp.id';
+        $stmtPagar = $db->prepare($sqlPagar);
+        $stmtPagar->execute($paramsPagar);
         $rowsPagar = $stmtPagar->fetchAll();
 
-        $stmtReceber = $db->prepare('
+        // ---- QUERY RECEBER ----
+        $sqlReceber = '
             SELECT cr.id, cr.data_vencimento, cr.descricao, c.razao_social AS entidade,
                    cr.valor, cr.valor_recebido AS valor_pago, cr.status,
                    cat.id AS categoria_id, cat.nome AS categoria, cat.cor AS categoria_cor,
@@ -490,9 +518,16 @@ final class RelatorioController
             JOIN clientes c ON c.id = cr.cliente_id
             JOIN categorias cat ON cat.id = cr.categoria_id
             WHERE cr.empresa_id = ? AND cr.data_vencimento BETWEEN ? AND ?
-            ORDER BY cat.nome, cr.data_vencimento, cr.id
-        ');
-        $stmtReceber->execute([$empresaId, $dataInicio, $dataFim]);
+        ';
+        $paramsReceber = [$empresaId, $dataInicio, $dataFim];
+        if (!empty($statusReceber)) {
+            $placeholders = implode(',', array_fill(0, count($statusReceber), '?'));
+            $sqlReceber .= " AND cr.status IN ($placeholders)";
+            foreach ($statusReceber as $s) $paramsReceber[] = $s;
+        }
+        $sqlReceber .= ' ORDER BY cat.nome, cr.data_vencimento, cr.id';
+        $stmtReceber = $db->prepare($sqlReceber);
+        $stmtReceber->execute($paramsReceber);
         $rowsReceber = $stmtReceber->fetchAll();
 
         $rows = array_merge($rowsPagar, $rowsReceber);
@@ -564,6 +599,7 @@ final class RelatorioController
                 ];
             }, $rows),
             'grupos' => $grupos,
+            'status_filtrado' => $statusAplicado,
             'totais_separados' => [
                 'pagar' => [
                     'qtd'   => $totaisPagar['qtd'],

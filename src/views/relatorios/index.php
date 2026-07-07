@@ -13,11 +13,6 @@
         <p>Apenas contas a receber com filtros de status e data — ideal para controle de receitas.</p>
     </a>
 
-    <a href="relatorio_show.php?tipo=periodo" class="report-card">
-        <h3>📅 Por Período (Pagar + Receber)</h3>
-        <p>Todas as contas (pagar/receber) em um intervalo de datas, com filtros.</p>
-    </a>
-
     <a href="relatorio_show.php?tipo=categoria" class="report-card">
         <h3>🏷️ Por Categoria</h3>
         <p>Totalizadores por categoria — ideal para análise de despesas e receitas.</p>

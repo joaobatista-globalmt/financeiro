@@ -3,8 +3,18 @@
 </div>
 
 <div class="report-grid">
+    <a href="relatorio_show.php?tipo=contas_pagar" class="report-card">
+        <h3>🔴 Contas a Pagar (por período)</h3>
+        <p>Apenas contas a pagar com filtros de status e data — ideal para controle de despesas.</p>
+    </a>
+
+    <a href="relatorio_show.php?tipo=contas_receber" class="report-card">
+        <h3>🟢 Contas a Receber (por período)</h3>
+        <p>Apenas contas a receber com filtros de status e data — ideal para controle de receitas.</p>
+    </a>
+
     <a href="relatorio_show.php?tipo=periodo" class="report-card">
-        <h3>📅 Por Período</h3>
+        <h3>📅 Por Período (Pagar + Receber)</h3>
         <p>Todas as contas (pagar/receber) em um intervalo de datas, com filtros.</p>
     </a>
 

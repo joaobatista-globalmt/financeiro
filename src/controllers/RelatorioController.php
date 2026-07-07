@@ -1510,45 +1510,33 @@ final class RelatorioController
         }
         ksort($rowsPorData);
 
+        // Layout clean: sem cores de fundo, bordas cinza, total com borda preta 2px.
+        // Alinhamento à direita com 3 fallbacks (wkhtmltopdf 0.12.6 ignora text-align do CSS em alguns casos).
         $html = '<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-            body { font-family: Arial, sans-serif; font-size: 11px; }
+            body { font-family: Arial, sans-serif; font-size: 11px; color: #000; }
             h1 { font-size: 18px; margin-bottom: 5px; }
             .subtitulo { color: #666; margin-bottom: 14px; font-size: 10px; }
-            .filtros { background: #fef2f2; border: 1px solid #fecaca; padding: 8px 12px; margin-bottom: 12px; font-size: 10px; }
-            .filtros strong { color: #991b1b; }
+            .filtros { border: 1px solid #9ca3af; padding: 8px 12px; margin-bottom: 12px; font-size: 10px; }
             .cards { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
-            .cards td { width: 25%; padding: 10px 12px; border: 1px solid #ddd; vertical-align: top; }
-            .card-total     { border-left: 4px solid #dc2626 !important; background: #fef2f2; }
-            .card-pago      { border-left: 4px solid #16a34a !important; background: #f0fdf4; }
-            .card-pendente  { border-left: 4px solid #ea580c !important; background: #fff7ed; }
-            .card-qtd       { border-left: 4px solid #2563eb !important; background: #eff6ff; }
-            .card-label { font-size: 9px; text-transform: uppercase; font-weight: bold; }
-            .card-total    .card-label { color: #991b1b; }
-            .card-pago     .card-label { color: #166534; }
-            .card-pendente .card-label { color: #9a3412; }
-            .card-qtd      .card-label { color: #1e40af; }
-            .card-valor { font-size: 16px; font-weight: bold; margin-top: 4px; }
-            .card-total    .card-valor { color: #dc2626; }
-            .card-pago     .card-valor { color: #16a34a; }
-            .card-pendente .card-valor { color: #ea580c; }
-            .card-qtd      .card-valor { color: #2563eb; }
+            .cards td { width: 25%; padding: 10px 12px; border: 1px solid #d1d5db; vertical-align: top; }
+            .card-label { font-size: 9px; text-transform: uppercase; font-weight: bold; color: #6b7280; }
+            .card-valor { font-size: 16px; font-weight: bold; margin-top: 4px; color: #000; text-align: right; font-variant-numeric: tabular-nums; }
             .card-sub { font-size: 9px; color: #6b7280; margin-top: 2px; }
             table.dados { width: 100%; border-collapse: collapse; margin-top: 6px; }
-            table.dados th, table.dados td { border: 1px solid #ccc; padding: 5px 7px; text-align: left; }
-            table.dados th { background: #f5f5f5; font-weight: bold; font-size: 10px; }
-            tr.data-header td { background: #e5e7eb; font-weight: bold; color: #374151; padding: 6px 8px; border-top: 2px solid #9ca3af; }
-            tr.subtotal td { background: #fef9c3; color: #854d0e; font-weight: 600; border-bottom: 1px solid #facc15; }
-            tr.subtotal td.valor { text-align: right; font-variant-numeric: tabular-nums; }
-            tr.total-row th { background: #1e40af; color: #fff; font-size: 12px; padding: 8px 10px; }
-            tr.total-row th.valor { text-align: right; font-variant-numeric: tabular-nums; }
+            table.dados th, table.dados td { border: 1px solid #d1d5db; padding: 5px 7px; text-align: left; }
+            table.dados th { font-weight: bold; font-size: 10px; color: #000; }
+            td.valor, th.valor { text-align: right; font-variant-numeric: tabular-nums; }
+            tr.data-header td { font-weight: bold; color: #000; padding: 6px 8px; border-top: 1px solid #9ca3af; border-bottom: 1px solid #9ca3af; }
+            tr.subtotal td { font-weight: 600; color: #000; border-top: 1px solid #9ca3af; border-bottom: 1px solid #9ca3af; }
+            tr.total-row th { font-size: 12px; padding: 8px 10px; color: #000; border-top: 2px solid #000; border-bottom: 2px solid #000; }
         </style></head><body>';
 
-        $html .= '<h1>🔴 ' . htmlspecialchars($dados['titulo']) . '</h1>';
+        $html .= '<h1>Contas a Pagar</h1>';
         $html .= '<div class="subtitulo">' . htmlspecialchars($empresaNome);
         $html .= ' | Período: ' . dataIsoParaBr($dataInicio) . ' a ' . dataIsoParaBr($dataFim);
         $html .= ' | Gerado em ' . date('d/m/Y H:i') . '</div>';
 
-        // Filtros aplicados
+        // Filtros aplicados (sem cor de fundo)
         $html .= '<div class="filtros"><strong>Filtros:</strong> Tipo: <strong>PAGAR</strong>';
         if (!empty($statusFiltrado)) {
             $html .= ' | Status: <strong>' . htmlspecialchars(implode(', ', $statusFiltrado)) . '</strong>';
@@ -1557,19 +1545,19 @@ final class RelatorioController
         }
         $html .= '</div>';
 
-        // Cards de resumo
+        // Cards de resumo (sem cores de fundo, valor com 3 fallbacks)
         $html .= '<table class="cards"><tr>';
-        $html .= '<td class="card-total"><div class="card-label">🔴 TOTAL</div>';
-        $html .= '<div class="card-valor">R$ ' . number_format($totais['valor'], 2, ',', '.') . '</div>';
+        $html .= '<td><div class="card-label">TOTAL</div>';
+        $html .= '<div class="card-valor" align="right" style="text-align: right; font-variant-numeric: tabular-nums;">R$ ' . number_format($totais['valor'], 2, ',', '.') . '</div>';
         $html .= '<div class="card-sub">' . $totais['qtd'] . ' conta(s)</div></td>';
-        $html .= '<td class="card-pago"><div class="card-label">🟢 PAGO</div>';
-        $html .= '<div class="card-valor">R$ ' . number_format($totais['pago'], 2, ',', '.') . '</div>';
+        $html .= '<td><div class="card-label">PAGO</div>';
+        $html .= '<div class="card-valor" align="right" style="text-align: right; font-variant-numeric: tabular-nums;">R$ ' . number_format($totais['pago'], 2, ',', '.') . '</div>';
         $html .= '<div class="card-sub">Valor liquidado</div></td>';
-        $html .= '<td class="card-pendente"><div class="card-label">🟠 PENDENTE</div>';
-        $html .= '<div class="card-valor">R$ ' . number_format($totais['pendente'], 2, ',', '.') . '</div>';
+        $html .= '<td><div class="card-label">PENDENTE</div>';
+        $html .= '<div class="card-valor" align="right" style="text-align: right; font-variant-numeric: tabular-nums;">R$ ' . number_format($totais['pendente'], 2, ',', '.') . '</div>';
         $html .= '<div class="card-sub">A pagar ainda</div></td>';
-        $html .= '<td class="card-qtd"><div class="card-label">🔵 QTD</div>';
-        $html .= '<div class="card-valor">' . $totais['qtd'] . '</div>';
+        $html .= '<td><div class="card-label">QTD</div>';
+        $html .= '<div class="card-valor" align="right" style="text-align: right; font-variant-numeric: tabular-nums;">' . $totais['qtd'] . '</div>';
         $html .= '<div class="card-sub">Contas no período</div></td>';
         $html .= '</tr></table>';
 
@@ -1587,29 +1575,40 @@ final class RelatorioController
         $html .= '<col style="width:2.3cm;">';  // Nº Documento
         $html .= '</colgroup>';
         $html .= '<thead><tr>';
-        foreach ($headers as $h) $html .= '<th>' . htmlspecialchars($h) . '</th>';
+        foreach ($headers as $i => $h) {
+            $isValor = ($i === 4 || $i === 5); // Valor, Valor Pago
+            $cls = $isValor ? ' class="valor" align="right" style="text-align: right; font-variant-numeric: tabular-nums;"' : '';
+            $html .= '<th' . $cls . '>' . htmlspecialchars($h) . '</th>';
+        }
         $html .= '</tr></thead><tbody>';
 
         if (empty($rowsPorData)) {
-            $html .= '<tr><td colspan="' . count($headers) . '" style="text-align:center; color:#999; padding:20px;">Nenhuma conta a pagar encontrada no período/filtros.</td></tr>';
+            $html .= '<tr><td colspan="' . count($headers) . '" style="text-align:center; color:#666; padding:20px;">Nenhuma conta a pagar encontrada no período/filtros.</td></tr>';
         } else {
             foreach ($rowsPorData as $dataIso => $rowsData) {
                 $sub = $subtotaisPorData[$dataIso] ?? null;
                 $html .= '<tr class="data-header"><td colspan="' . count($headers) . '">';
-                $html .= '📅 ' . dataIsoParaBr($dataIso) . ' (' . ($sub['qtd'] ?? 0) . ' conta(s))</td></tr>';
+                $html .= 'Data: ' . dataIsoParaBr($dataIso) . ' (' . ($sub['qtd'] ?? 0) . ' conta(s))</td></tr>';
                 foreach ($rowsData as $row) {
                     $rowShow = $row;
                     unset($rowShow['__raw__']);
                     $rowShow[0] = ''; // Vencimento (já tá no cabeçalho da data)
                     $html .= '<tr>';
-                    foreach ($rowShow as $cell) $html .= '<td>' . htmlspecialchars((string)$cell) . '</td>';
+                    foreach ($rowShow as $i => $cell) {
+                        $isValor = ($i === 4 || $i === 5);
+                        if ($isValor) {
+                            $html .= '<td class="valor" align="right" style="text-align: right; font-variant-numeric: tabular-nums;">' . htmlspecialchars((string)$cell) . '</td>';
+                        } else {
+                            $html .= '<td>' . htmlspecialchars((string)$cell) . '</td>';
+                        }
+                    }
                     $html .= '</tr>';
                 }
                 if ($sub) {
                     $html .= '<tr class="subtotal">';
-                    $html .= '<td colspan="4" style="text-align:right;">Subtotal ' . dataIsoParaBr($dataIso) . ':</td>';
-                    $html .= '<td class="valor">R$ ' . number_format($sub['valor'], 2, ',', '.') . '</td>';
-                    $html .= '<td class="valor">R$ ' . number_format($sub['pago'], 2, ',', '.') . '</td>';
+                    $html .= '<td colspan="4" class="valor" align="right" style="text-align: right;">Subtotal ' . dataIsoParaBr($dataIso) . ':</td>';
+                    $html .= '<td class="valor" align="right" style="text-align: right; font-variant-numeric: tabular-nums;">R$ ' . number_format($sub['valor'], 2, ',', '.') . '</td>';
+                    $html .= '<td class="valor" align="right" style="text-align: right; font-variant-numeric: tabular-nums;">R$ ' . number_format($sub['pago'], 2, ',', '.') . '</td>';
                     $html .= '<td colspan="3"></td>';
                     $html .= '</tr>';
                 }
@@ -1617,11 +1616,11 @@ final class RelatorioController
         }
         $html .= '</tbody>';
 
-        // Total geral
+        // Total geral (borda preta 2px, sem cor de fundo)
         $html .= '<tfoot><tr class="total-row">';
-        $html .= '<th colspan="4" style="text-align:right;">TOTAL GERAL:</th>';
-        $html .= '<th class="valor">R$ ' . number_format($totais['valor'], 2, ',', '.') . '</th>';
-        $html .= '<th class="valor">R$ ' . number_format($totais['pago'], 2, ',', '.') . '</th>';
+        $html .= '<th colspan="4" class="valor" align="right" style="text-align: right;">TOTAL GERAL:</th>';
+        $html .= '<th class="valor" align="right" style="text-align: right; font-variant-numeric: tabular-nums;">R$ ' . number_format($totais['valor'], 2, ',', '.') . '</th>';
+        $html .= '<th class="valor" align="right" style="text-align: right; font-variant-numeric: tabular-nums;">R$ ' . number_format($totais['pago'], 2, ',', '.') . '</th>';
         $html .= '<th colspan="3" style="text-align:left;">' . $totais['qtd'] . ' contas</th>';
         $html .= '</tr></tfoot>';
 
@@ -1665,45 +1664,33 @@ final class RelatorioController
         }
         ksort($rowsPorData);
 
+        // Layout clean: sem cores de fundo, bordas cinza, total com borda preta 2px.
+        // Alinhamento à direita com 3 fallbacks (wkhtmltopdf 0.12.6 ignora text-align do CSS em alguns casos).
         $html = '<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-            body { font-family: Arial, sans-serif; font-size: 11px; }
+            body { font-family: Arial, sans-serif; font-size: 11px; color: #000; }
             h1 { font-size: 18px; margin-bottom: 5px; }
             .subtitulo { color: #666; margin-bottom: 14px; font-size: 10px; }
-            .filtros { background: #f0fdf4; border: 1px solid #bbf7d0; padding: 8px 12px; margin-bottom: 12px; font-size: 10px; }
-            .filtros strong { color: #166534; }
+            .filtros { border: 1px solid #9ca3af; padding: 8px 12px; margin-bottom: 12px; font-size: 10px; }
             .cards { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
-            .cards td { width: 25%; padding: 10px 12px; border: 1px solid #ddd; vertical-align: top; }
-            .card-total     { border-left: 4px solid #16a34a !important; background: #f0fdf4; }
-            .card-recebido  { border-left: 4px solid #2563eb !important; background: #eff6ff; }
-            .card-pendente  { border-left: 4px solid #ea580c !important; background: #fff7ed; }
-            .card-qtd       { border-left: 4px solid #7c3aed !important; background: #faf5ff; }
-            .card-label { font-size: 9px; text-transform: uppercase; font-weight: bold; }
-            .card-total    .card-label { color: #166534; }
-            .card-recebido .card-label { color: #1e40af; }
-            .card-pendente .card-label { color: #9a3412; }
-            .card-qtd      .card-label { color: #6b21a8; }
-            .card-valor { font-size: 16px; font-weight: bold; margin-top: 4px; }
-            .card-total    .card-valor { color: #16a34a; }
-            .card-recebido .card-valor { color: #2563eb; }
-            .card-pendente .card-valor { color: #ea580c; }
-            .card-qtd      .card-valor { color: #7c3aed; }
+            .cards td { width: 25%; padding: 10px 12px; border: 1px solid #d1d5db; vertical-align: top; }
+            .card-label { font-size: 9px; text-transform: uppercase; font-weight: bold; color: #6b7280; }
+            .card-valor { font-size: 16px; font-weight: bold; margin-top: 4px; color: #000; text-align: right; font-variant-numeric: tabular-nums; }
             .card-sub { font-size: 9px; color: #6b7280; margin-top: 2px; }
             table.dados { width: 100%; border-collapse: collapse; margin-top: 6px; }
-            table.dados th, table.dados td { border: 1px solid #ccc; padding: 5px 7px; text-align: left; }
-            table.dados th { background: #f5f5f5; font-weight: bold; font-size: 10px; }
-            tr.data-header td { background: #e5e7eb; font-weight: bold; color: #374151; padding: 6px 8px; border-top: 2px solid #9ca3af; }
-            tr.subtotal td { background: #fef9c3; color: #854d0e; font-weight: 600; border-bottom: 1px solid #facc15; }
-            tr.subtotal td.valor { text-align: right; font-variant-numeric: tabular-nums; }
-            tr.total-row th { background: #1e40af; color: #fff; font-size: 12px; padding: 8px 10px; }
-            tr.total-row th.valor { text-align: right; font-variant-numeric: tabular-nums; }
+            table.dados th, table.dados td { border: 1px solid #d1d5db; padding: 5px 7px; text-align: left; }
+            table.dados th { font-weight: bold; font-size: 10px; color: #000; }
+            td.valor, th.valor { text-align: right; font-variant-numeric: tabular-nums; }
+            tr.data-header td { font-weight: bold; color: #000; padding: 6px 8px; border-top: 1px solid #9ca3af; border-bottom: 1px solid #9ca3af; }
+            tr.subtotal td { font-weight: 600; color: #000; border-top: 1px solid #9ca3af; border-bottom: 1px solid #9ca3af; }
+            tr.total-row th { font-size: 12px; padding: 8px 10px; color: #000; border-top: 2px solid #000; border-bottom: 2px solid #000; }
         </style></head><body>';
 
-        $html .= '<h1>🟢 ' . htmlspecialchars($dados['titulo']) . '</h1>';
+        $html .= '<h1>Contas a Receber</h1>';
         $html .= '<div class="subtitulo">' . htmlspecialchars($empresaNome);
         $html .= ' | Período: ' . dataIsoParaBr($dataInicio) . ' a ' . dataIsoParaBr($dataFim);
         $html .= ' | Gerado em ' . date('d/m/Y H:i') . '</div>';
 
-        // Filtros aplicados
+        // Filtros aplicados (sem cor de fundo)
         $html .= '<div class="filtros"><strong>Filtros:</strong> Tipo: <strong>RECEBER</strong>';
         if (!empty($statusFiltrado)) {
             $html .= ' | Status: <strong>' . htmlspecialchars(implode(', ', $statusFiltrado)) . '</strong>';
@@ -1712,59 +1699,70 @@ final class RelatorioController
         }
         $html .= '</div>';
 
-        // Cards de resumo
+        // Cards de resumo (sem cores de fundo, valor com 3 fallbacks)
         $html .= '<table class="cards"><tr>';
-        $html .= '<td class="card-total"><div class="card-label">🟢 TOTAL</div>';
-        $html .= '<div class="card-valor">R$ ' . number_format($totais['valor'], 2, ',', '.') . '</div>';
+        $html .= '<td><div class="card-label">TOTAL</div>';
+        $html .= '<div class="card-valor" align="right" style="text-align: right; font-variant-numeric: tabular-nums;">R$ ' . number_format($totais['valor'], 2, ',', '.') . '</div>';
         $html .= '<div class="card-sub">' . $totais['qtd'] . ' conta(s)</div></td>';
-        $html .= '<td class="card-recebido"><div class="card-label">🔵 RECEBIDO</div>';
-        $html .= '<div class="card-valor">R$ ' . number_format($totais['recebido'], 2, ',', '.') . '</div>';
+        $html .= '<td><div class="card-label">RECEBIDO</div>';
+        $html .= '<div class="card-valor" align="right" style="text-align: right; font-variant-numeric: tabular-nums;">R$ ' . number_format($totais['recebido'], 2, ',', '.') . '</div>';
         $html .= '<div class="card-sub">Valor liquidado</div></td>';
-        $html .= '<td class="card-pendente"><div class="card-label">🟠 PENDENTE</div>';
-        $html .= '<div class="card-valor">R$ ' . number_format($totais['pendente'], 2, ',', '.') . '</div>';
+        $html .= '<td><div class="card-label">PENDENTE</div>';
+        $html .= '<div class="card-valor" align="right" style="text-align: right; font-variant-numeric: tabular-nums;">R$ ' . number_format($totais['pendente'], 2, ',', '.') . '</div>';
         $html .= '<div class="card-sub">A receber ainda</div></td>';
-        $html .= '<td class="card-qtd"><div class="card-label">🟣 QTD</div>';
-        $html .= '<div class="card-valor">' . $totais['qtd'] . '</div>';
+        $html .= '<td><div class="card-label">QTD</div>';
+        $html .= '<div class="card-valor" align="right" style="text-align: right; font-variant-numeric: tabular-nums;">' . $totais['qtd'] . '</div>';
         $html .= '<div class="card-sub">Contas no período</div></td>';
         $html .= '</tr></table>';
 
         // Tabela agrupada por data
         $html .= '<table class="dados">';
         $html .= '<colgroup>';
-        $html .= '<col style="width:2.2cm;">';  // Vencimento
-        $html .= '<col style="width:4.5cm;">';  // Descrição
-        $html .= '<col style="width:3.5cm;">';  // Cliente
-        $html .= '<col style="width:2.5cm;">';  // Categoria
-        $html .= '<col style="width:2.3cm;">';  // Valor
-        $html .= '<col style="width:2.5cm;">';  // Valor Recebido
-        $html .= '<col style="width:1.8cm;">';  // Status
-        $html .= '<col style="width:1.8cm;">';  // Forma Recb
-        $html .= '<col style="width:2.3cm;">';  // Nº Documento
+        $html .= '<col style="width:2.2cm;">';
+        $html .= '<col style="width:4.5cm;">';
+        $html .= '<col style="width:3.5cm;">';
+        $html .= '<col style="width:2.5cm;">';
+        $html .= '<col style="width:2.3cm;">';
+        $html .= '<col style="width:2.5cm;">';
+        $html .= '<col style="width:1.8cm;">';
+        $html .= '<col style="width:1.8cm;">';
+        $html .= '<col style="width:2.3cm;">';
         $html .= '</colgroup>';
         $html .= '<thead><tr>';
-        foreach ($headers as $h) $html .= '<th>' . htmlspecialchars($h) . '</th>';
+        foreach ($headers as $i => $h) {
+            $isValor = ($i === 4 || $i === 5); // Valor, Valor Recebido
+            $cls = $isValor ? ' class="valor" align="right" style="text-align: right; font-variant-numeric: tabular-nums;"' : '';
+            $html .= '<th' . $cls . '>' . htmlspecialchars($h) . '</th>';
+        }
         $html .= '</tr></thead><tbody>';
 
         if (empty($rowsPorData)) {
-            $html .= '<tr><td colspan="' . count($headers) . '" style="text-align:center; color:#999; padding:20px;">Nenhuma conta a receber encontrada no período/filtros.</td></tr>';
+            $html .= '<tr><td colspan="' . count($headers) . '" style="text-align:center; color:#666; padding:20px;">Nenhuma conta a receber encontrada no período/filtros.</td></tr>';
         } else {
             foreach ($rowsPorData as $dataIso => $rowsData) {
                 $sub = $subtotaisPorData[$dataIso] ?? null;
                 $html .= '<tr class="data-header"><td colspan="' . count($headers) . '">';
-                $html .= '📅 ' . dataIsoParaBr($dataIso) . ' (' . ($sub['qtd'] ?? 0) . ' conta(s))</td></tr>';
+                $html .= 'Data: ' . dataIsoParaBr($dataIso) . ' (' . ($sub['qtd'] ?? 0) . ' conta(s))</td></tr>';
                 foreach ($rowsData as $row) {
                     $rowShow = $row;
                     unset($rowShow['__raw__']);
                     $rowShow[0] = '';
                     $html .= '<tr>';
-                    foreach ($rowShow as $cell) $html .= '<td>' . htmlspecialchars((string)$cell) . '</td>';
+                    foreach ($rowShow as $i => $cell) {
+                        $isValor = ($i === 4 || $i === 5);
+                        if ($isValor) {
+                            $html .= '<td class="valor" align="right" style="text-align: right; font-variant-numeric: tabular-nums;">' . htmlspecialchars((string)$cell) . '</td>';
+                        } else {
+                            $html .= '<td>' . htmlspecialchars((string)$cell) . '</td>';
+                        }
+                    }
                     $html .= '</tr>';
                 }
                 if ($sub) {
                     $html .= '<tr class="subtotal">';
-                    $html .= '<td colspan="4" style="text-align:right;">Subtotal ' . dataIsoParaBr($dataIso) . ':</td>';
-                    $html .= '<td class="valor">R$ ' . number_format($sub['valor'], 2, ',', '.') . '</td>';
-                    $html .= '<td class="valor">R$ ' . number_format($sub['recebido'], 2, ',', '.') . '</td>';
+                    $html .= '<td colspan="4" class="valor" align="right" style="text-align: right;">Subtotal ' . dataIsoParaBr($dataIso) . ':</td>';
+                    $html .= '<td class="valor" align="right" style="text-align: right; font-variant-numeric: tabular-nums;">R$ ' . number_format($sub['valor'], 2, ',', '.') . '</td>';
+                    $html .= '<td class="valor" align="right" style="text-align: right; font-variant-numeric: tabular-nums;">R$ ' . number_format($sub['recebido'], 2, ',', '.') . '</td>';
                     $html .= '<td colspan="3"></td>';
                     $html .= '</tr>';
                 }
@@ -1772,11 +1770,11 @@ final class RelatorioController
         }
         $html .= '</tbody>';
 
-        // Total geral
+        // Total geral (borda preta 2px, sem cor de fundo)
         $html .= '<tfoot><tr class="total-row">';
-        $html .= '<th colspan="4" style="text-align:right;">TOTAL GERAL:</th>';
-        $html .= '<th class="valor">R$ ' . number_format($totais['valor'], 2, ',', '.') . '</th>';
-        $html .= '<th class="valor">R$ ' . number_format($totais['recebido'], 2, ',', '.') . '</th>';
+        $html .= '<th colspan="4" class="valor" align="right" style="text-align: right;">TOTAL GERAL:</th>';
+        $html .= '<th class="valor" align="right" style="text-align: right; font-variant-numeric: tabular-nums;">R$ ' . number_format($totais['valor'], 2, ',', '.') . '</th>';
+        $html .= '<th class="valor" align="right" style="text-align: right; font-variant-numeric: tabular-nums;">R$ ' . number_format($totais['recebido'], 2, ',', '.') . '</th>';
         $html .= '<th colspan="3" style="text-align:left;">' . $totais['qtd'] . ' contas</th>';
         $html .= '</tr></tfoot>';
 

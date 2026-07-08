@@ -29,41 +29,118 @@ $statusOptions = [
     'paga'      => 'Paga',
     'cancelada' => 'Cancelada',
 ];
-
-// Monta query string preservando filtros já aplicados
-$queryExport = http_build_query([
-    'tipo'        => $tipo,
-    'formato'     => 'csv', // será sobrescrito
-    'data_inicio' => $dataInicio,
-    'data_fim'    => $dataFim,
-    'status'      => $statusFiltro,
-]);
-$queryExportBase = preg_replace('/formato=[^&]+/', 'formato=', $queryExport);
 ?>
+<style>
+/* Layout clean: sem cores, bordas cinza, total com borda preta 2px */
+.filtros-bar-clean {
+    background: #ffffff;
+    border: 1px solid #d1d5db;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    border-radius: 4px;
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    align-items: flex-end;
+}
+.filtros-bar-clean .form-group { margin-bottom: 0; }
+.cards-clean {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 16px;
+}
+.card-clean {
+    background: #ffffff;
+    border: 1px solid #d1d5db;
+    padding: 14px 16px;
+    border-radius: 4px;
+}
+.card-clean .label {
+    font-size: 11px;
+    color: #6b7280;
+    text-transform: uppercase;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+}
+.card-clean .valor {
+    font-size: 20px;
+    font-weight: 700;
+    color: #111827;
+    margin-top: 4px;
+}
+.card-clean .sub {
+    font-size: 12px;
+    color: #6b7280;
+    margin-top: 2px;
+}
+/* Tabela clean */
+.tbl-clean { width: 100%; border-collapse: collapse; }
+.tbl-clean thead th {
+    background: #ffffff;
+    border-bottom: 2px solid #9ca3af;
+    padding: 8px 10px;
+    text-align: left;
+    font-size: 12px;
+    font-weight: 700;
+    color: #111827;
+}
+.tbl-clean tbody td {
+    border-bottom: 1px solid #e5e7eb;
+    padding: 6px 10px;
+    font-size: 13px;
+    color: #1f2937;
+}
+.tbl-clean tr.data-header td {
+    background: #ffffff;
+    border-top: 1px solid #9ca3af;
+    border-bottom: 1px solid #9ca3af;
+    font-weight: 700;
+    color: #111827;
+    padding: 6px 10px;
+}
+.tbl-clean tr.subtotal td {
+    background: #ffffff;
+    border-top: 1px solid #9ca3af;
+    border-bottom: 1px solid #9ca3af;
+    font-weight: 700;
+    color: #111827;
+}
+.tbl-clean tfoot th {
+    background: #ffffff;
+    border-top: 2px solid #000000;
+    border-bottom: 2px solid #000000;
+    padding: 10px 12px;
+    font-size: 14px;
+    font-weight: 700;
+    color: #000000;
+}
+</style>
+
 <div class="page-header">
     <h1>🔴 <?= htmlspecialchars($dados['titulo']) ?></h1>
     <div>
-        <a href="relatorio_exportar.php?<?= $queryExportBase ?>csv&data_inicio=<?= urlencode($dataInicio) ?>&data_fim=<?= urlencode($dataFim) ?>&status[]=<?= implode('&status[]=', array_map('urlencode', $statusFiltro)) ?>" class="btn">📥 CSV</a>
-        <a href="relatorio_exportar.php?<?= $queryExportBase ?>pdf&data_inicio=<?= urlencode($dataInicio) ?>&data_fim=<?= urlencode($dataFim) ?>&status[]=<?= implode('&status[]=', array_map('urlencode', $statusFiltro)) ?>" class="btn">📄 PDF</a>
+        <a href="relatorio_exportar.php?tipo=<?= urlencode($tipo) ?>&formato=csv&data_inicio=<?= urlencode($dataInicio) ?>&data_fim=<?= urlencode($dataFim) ?><?= !empty($statusFiltro) ? '&status[]=' . implode('&status[]=', array_map('urlencode', $statusFiltro)) : '' ?>" class="btn">📥 CSV</a>
+        <a href="relatorio_exportar.php?tipo=<?= urlencode($tipo) ?>&formato=pdf&data_inicio=<?= urlencode($dataInicio) ?>&data_fim=<?= urlencode($dataFim) ?><?= !empty($statusFiltro) ? '&status[]=' . implode('&status[]=', array_map('urlencode', $statusFiltro)) : '' ?>" class="btn">📄 PDF</a>
         <a href="relatorios.php" class="btn">← Voltar</a>
     </div>
 </div>
 
-<form method="get" class="filters-bar">
+<form method="get" class="filtros-bar-clean">
     <input type="hidden" name="tipo" value="<?= htmlspecialchars($tipo) ?>">
 
     <div class="form-group">
         <label>Tipo</label>
-        <select name="tipo_fixo" disabled style="background: #f3f4f6; cursor: not-allowed;">
+        <select name="tipo_fixo" disabled>
             <option selected>🔴 PAGAR (fixo neste relatório)</option>
         </select>
     </div>
 
-    <div class="form-group">
+    <div class="form-group" style="min-width: 260px;">
         <label>Status (vazio = todos)</label>
-        <div style="display: flex; gap: 12px; flex-wrap: wrap; padding: 6px 0;">
+        <div style="display: flex; gap: 12px; flex-wrap: wrap; padding: 4px 0;">
             <?php foreach ($statusOptions as $val => $label): ?>
-                <label style="display: flex; align-items: center; gap: 4px; font-weight: normal; cursor: pointer;">
+                <label style="display: flex; align-items: center; gap: 4px; font-weight: normal; cursor: pointer; margin: 0;">
                     <input type="checkbox" name="status[]" value="<?= htmlspecialchars($val) ?>"
                         <?= in_array($val, $statusFiltro) ? 'checked' : '' ?>>
                     <?= htmlspecialchars($label) ?>
@@ -99,56 +176,40 @@ $filtroStatusLabel = empty($statusFiltro) ? 'TODOS' : strtoupper(implode(', ', $
 <?php else: ?>
 
     <!-- Filtros aplicados -->
-    <div style="background: #fef2f2; border: 1px solid #fecaca; padding: 10px 14px; margin-bottom: 14px; border-radius: 4px; font-size: 13px;">
-        <strong style="color: #991b1b;">🔍 Filtros aplicados:</strong>
-        Tipo: <strong>PAGAR</strong> |
-        Status: <strong><?= htmlspecialchars($filtroStatusLabel) ?></strong> |
-        Período: <strong><?= htmlspecialchars(dataIsoParaBr($dataInicio)) ?></strong> a <strong><?= htmlspecialchars(dataIsoParaBr($dataFim)) ?></strong>
+    <div class="filtros-bar-clean" style="font-size: 13px;">
+        <strong>🔍 Filtros aplicados:</strong>
+        <span>Tipo: <strong>PAGAR</strong></span> |
+        <span>Status: <strong><?= htmlspecialchars($filtroStatusLabel) ?></strong></span> |
+        <span>Período: <strong><?= htmlspecialchars(dataIsoParaBr($dataInicio)) ?></strong> a <strong><?= htmlspecialchars(dataIsoParaBr($dataFim)) ?></strong></span>
     </div>
 
     <!-- Cards de resumo -->
-    <div class="report-cards-row" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px;">
-        <div class="report-total-card" style="background: #fef2f2; border-left: 4px solid #dc2626; padding: 14px 16px; border-radius: 6px;">
-            <div style="font-size: 12px; color: #991b1b; text-transform: uppercase; font-weight: 600;">🔴 Total</div>
-            <div style="font-size: 22px; font-weight: 700; color: #dc2626; margin-top: 4px;">
-                R$ <?= number_format($totais['valor'], 2, ',', '.') ?>
-            </div>
-            <div style="font-size: 12px; color: #6b7280; margin-top: 2px;">
-                <?= $totais['qtd'] ?> conta(s) no período
-            </div>
+    <div class="cards-clean">
+        <div class="card-clean">
+            <div class="label">🔴 Total</div>
+            <div class="valor valor" align="right" style="text-align: right; font-variant-numeric: tabular-nums;">R$ <?= number_format($totais['valor'], 2, ',', '.') ?></div>
+            <div class="sub"><?= $totais['qtd'] ?> conta(s) no período</div>
         </div>
-        <div class="report-total-card" style="background: #f0fdf4; border-left: 4px solid #16a34a; padding: 14px 16px; border-radius: 6px;">
-            <div style="font-size: 12px; color: #166534; text-transform: uppercase; font-weight: 600;">🟢 Pago</div>
-            <div style="font-size: 22px; font-weight: 700; color: #16a34a; margin-top: 4px;">
-                R$ <?= number_format($totais['pago'], 2, ',', '.') ?>
-            </div>
-            <div style="font-size: 12px; color: #6b7280; margin-top: 2px;">
-                <?= $totaisPorStatus['paga']['qtd'] ?? 0 ?> conta(s) liquidadas
-            </div>
+        <div class="card-clean">
+            <div class="label">🟢 Pago</div>
+            <div class="valor valor" align="right" style="text-align: right; font-variant-numeric: tabular-nums;">R$ <?= number_format($totais['pago'], 2, ',', '.') ?></div>
+            <div class="sub"><?= $totaisPorStatus['paga']['qtd'] ?? 0 ?> conta(s) liquidadas</div>
         </div>
-        <div class="report-total-card" style="background: #fff7ed; border-left: 4px solid #ea580c; padding: 14px 16px; border-radius: 6px;">
-            <div style="font-size: 12px; color: #9a3412; text-transform: uppercase; font-weight: 600;">🟠 Pendente</div>
-            <div style="font-size: 22px; font-weight: 700; color: #ea580c; margin-top: 4px;">
-                R$ <?= number_format($totais['pendente'], 2, ',', '.') ?>
-            </div>
-            <div style="font-size: 12px; color: #6b7280; margin-top: 2px;">
-                A pagar ainda
-            </div>
+        <div class="card-clean">
+            <div class="label">🟠 Pendente</div>
+            <div class="valor valor" align="right" style="text-align: right; font-variant-numeric: tabular-nums;">R$ <?= number_format($totais['pendente'], 2, ',', '.') ?></div>
+            <div class="sub">A pagar ainda</div>
         </div>
-        <div class="report-total-card" style="background: #eff6ff; border-left: 4px solid #2563eb; padding: 14px 16px; border-radius: 6px;">
-            <div style="font-size: 12px; color: #1e40af; text-transform: uppercase; font-weight: 600;">🔵 Qtd</div>
-            <div style="font-size: 22px; font-weight: 700; color: #2563eb; margin-top: 4px;">
-                <?= $totais['qtd'] ?>
-            </div>
-            <div style="font-size: 12px; color: #6b7280; margin-top: 2px;">
-                contas no período
-            </div>
+        <div class="card-clean">
+            <div class="label">🔵 Qtd</div>
+            <div class="valor valor" align="right" style="text-align: right; font-variant-numeric: tabular-nums;"><?= $totais['qtd'] ?></div>
+            <div class="sub">contas no período</div>
         </div>
     </div>
 
-    <!-- Breakdown por status (se filtrou vários status, mostra separadamente) -->
+    <!-- Breakdown por status (se filtrou vários status) -->
     <?php if (!empty($statusFiltro) && count($statusFiltro) > 1): ?>
-    <div style="background: #f9fafb; padding: 10px 14px; margin-bottom: 12px; border-radius: 4px; font-size: 13px;">
+    <div class="filtros-bar-clean" style="font-size: 13px;">
         <strong>📊 Por status:</strong>
         <?php foreach ($statusFiltro as $st):
             $ts = $totaisPorStatus[$st] ?? ['qtd' => 0, 'valor' => 0, 'pago' => 0];
@@ -156,80 +217,80 @@ $filtroStatusLabel = empty($statusFiltro) ? 'TODOS' : strtoupper(implode(', ', $
             <span style="margin-left: 12px;">
                 <strong><?= htmlspecialchars(ucfirst($st)) ?>:</strong>
                 <?= $ts['qtd'] ?> conta(s) &middot;
-                R$ <?= number_format($ts['valor'], 2, ',', '.') ?>
+                <span class="valor" style="font-variant-numeric: tabular-nums;">R$ <?= number_format($ts['valor'], 2, ',', '.') ?></span>
             </span>
         <?php endforeach; ?>
     </div>
     <?php endif; ?>
 
     <!-- Tabela agrupada por data -->
-    <table class="table">
+    <table class="tbl-clean">
         <colgroup>
-            <col style="width: 2.2cm;">  <!-- Vencimento -->
-            <col style="width: 4.5cm;">  <!-- Descrição -->
-            <col style="width: 3.5cm;">  <!-- Fornecedor -->
-            <col style="width: 2.5cm;">  <!-- Categoria -->
-            <col style="width: 2.3cm;">  <!-- Valor -->
-            <col style="width: 2.3cm;">  <!-- Valor Pago -->
-            <col style="width: 1.8cm;">  <!-- Status -->
-            <col style="width: 1.8cm;">  <!-- Forma Pgto -->
-            <col style="width: 2.3cm;">  <!-- Nº Documento -->
+            <col style="width: 2.2cm;">
+            <col style="width: 4.5cm;">
+            <col style="width: 3.5cm;">
+            <col style="width: 2.5cm;">
+            <col style="width: 2.3cm;">
+            <col style="width: 2.3cm;">
+            <col style="width: 1.8cm;">
+            <col style="width: 1.8cm;">
+            <col style="width: 2.3cm;">
         </colgroup>
         <thead>
             <tr>
-                <?php foreach ($headers as $h): ?>
-                    <th><?= htmlspecialchars($h) ?></th>
-                <?php endforeach; ?>
+                <th>Vencimento</th>
+                <th>Descrição</th>
+                <th>Fornecedor</th>
+                <th>Categoria</th>
+                <th class="valor" align="right" style="text-align: right; font-variant-numeric: tabular-nums;">Valor</th>
+                <th class="valor" align="right" style="text-align: right; font-variant-numeric: tabular-nums;">Valor Pago</th>
+                <th>Status</th>
+                <th>Forma Pgto.</th>
+                <th>Nº Documento</th>
             </tr>
         </thead>
         <tbody>
             <?php foreach ($rowsPorData as $dataIso => $rowsData):
                 $sub = $subtotaisPorData[$dataIso] ?? null;
             ?>
-                <tr style="background: #f3f4f6;">
-                    <td colspan="<?= count($headers) ?>" style="padding: 8px 12px; font-weight: 700; color: #374151; border-top: 2px solid #d1d5db;">
-                        📅 <?= dataIsoParaBr($dataIso) ?> (<?= $sub['qtd'] ?? 0 ?> conta(s))
-                    </td>
+                <tr class="data-header">
+                    <td colspan="9">📅 <?= dataIsoParaBr($dataIso) ?> (<?= $sub['qtd'] ?? 0 ?> conta(s))</td>
                 </tr>
                 <?php foreach ($rowsData as $row): ?>
                     <tr>
                         <?php
                         $rowShow = $row;
                         unset($rowShow['__raw__']);
-                        $rowShow[0] = '';
-                        foreach ($rowShow as $cell): ?>
-                            <td><?= htmlspecialchars((string)$cell) ?></td>
-                        <?php endforeach; ?>
+                        // colunas: 0=Vencimento (vazio pq já no header), 1=Descricao, 2=Fornecedor, 3=Categoria,
+                        //          4=Valor, 5=Valor Pago, 6=Status, 7=Forma Pgto, 8=Nº Doc
+                        ?>
+                        <td></td>
+                        <td><?= htmlspecialchars((string)$rowShow[1]) ?></td>
+                        <td><?= htmlspecialchars((string)$rowShow[2]) ?></td>
+                        <td><?= htmlspecialchars((string)$rowShow[3]) ?></td>
+                        <td class="valor" align="right" style="text-align: right; font-variant-numeric: tabular-nums;"><?= htmlspecialchars((string)$rowShow[4]) ?></td>
+                        <td class="valor" align="right" style="text-align: right; font-variant-numeric: tabular-nums;"><?= htmlspecialchars((string)$rowShow[5]) ?></td>
+                        <td><?= htmlspecialchars((string)$rowShow[6]) ?></td>
+                        <td><?= htmlspecialchars((string)$rowShow[7]) ?></td>
+                        <td><?= htmlspecialchars((string)$rowShow[8]) ?></td>
                     </tr>
                 <?php endforeach; ?>
                 <?php if ($sub): ?>
-                <tr style="background: #fef9c3; font-weight: 600;">
-                    <td colspan="4" style="text-align: right; padding: 6px 12px; color: #854d0e; border-bottom: 1px solid #facc15;">
-                        Subtotal <?= dataIsoParaBr($dataIso) ?>:
-                    </td>
-                    <td style="text-align: right; padding: 6px 12px; color: #854d0e; font-variant-numeric: tabular-nums; border-bottom: 1px solid #facc15;">
-                        R$ <?= number_format($sub['valor'], 2, ',', '.') ?>
-                    </td>
-                    <td style="text-align: right; padding: 6px 12px; color: #854d0e; font-variant-numeric: tabular-nums; border-bottom: 1px solid #facc15;">
-                        R$ <?= number_format($sub['pago'], 2, ',', '.') ?>
-                    </td>
-                    <td colspan="3" style="border-bottom: 1px solid #facc15;"></td>
+                <tr class="subtotal">
+                    <td colspan="4" class="valor" align="right" style="text-align: right;">Subtotal <?= dataIsoParaBr($dataIso) ?>:</td>
+                    <td class="valor" align="right" style="text-align: right; font-variant-numeric: tabular-nums;">R$ <?= number_format($sub['valor'], 2, ',', '.') ?></td>
+                    <td class="valor" align="right" style="text-align: right; font-variant-numeric: tabular-nums;">R$ <?= number_format($sub['pago'], 2, ',', '.') ?></td>
+                    <td colspan="3"></td>
                 </tr>
                 <?php endif; ?>
             <?php endforeach; ?>
         </tbody>
         <tfoot>
-            <tr class="report-total-row" style="background: #1e40af; color: white;">
-                <th colspan="4" style="text-align: right; padding: 10px 12px; font-size: 14px;">TOTAL GERAL:</th>
-                <th style="text-align: right; padding: 10px 12px; font-size: 14px; font-variant-numeric: tabular-nums;">
-                    R$ <?= number_format($totais['valor'], 2, ',', '.') ?>
-                </th>
-                <th style="text-align: right; padding: 10px 12px; font-size: 14px; font-variant-numeric: tabular-nums;">
-                    R$ <?= number_format($totais['pago'], 2, ',', '.') ?>
-                </th>
-                <th colspan="3" style="padding: 10px 12px; font-size: 12px;">
-                    <?= $totais['qtd'] ?> contas
-                </th>
+            <tr>
+                <th colspan="4" class="valor" align="right" style="text-align: right;">TOTAL GERAL:</th>
+                <th class="valor" align="right" style="text-align: right; font-variant-numeric: tabular-nums;">R$ <?= number_format($totais['valor'], 2, ',', '.') ?></th>
+                <th class="valor" align="right" style="text-align: right; font-variant-numeric: tabular-nums;">R$ <?= number_format($totais['pago'], 2, ',', '.') ?></th>
+                <th colspan="3" style="text-align: left;"><?= $totais['qtd'] ?> contas</th>
             </tr>
         </tfoot>
     </table>

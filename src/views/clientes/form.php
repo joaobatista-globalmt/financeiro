@@ -609,6 +609,7 @@ $actionForm = 'cliente_salvar.php' . ($returnTo ? '?return=' . rawurlencode($ret
       const d = await r.json();
       console.log('[BrasilAPI]', d);
 
+      setIfEmpty('tipo_pessoa', 'J');  // CNPJ = Pessoa Juridica
       setIfEmpty('razao_social',  d.razao_social || '');
       setIfEmpty('nome_fantasia', d.nome_fantasia || d.razao_social || '');
       setIfEmpty('cep',           formatCep(d.cep));

@@ -250,9 +250,18 @@ final class ClientesController
         } catch (PDOException $e) {
             $db->rollBack();
             error_log('[Clientes] Erro: ' . $e->getMessage());
-            Flash::set('erro', 'Erro ao salvar cliente.');
+            // Mostra mensagem detalhada em dev (ou generica em prod) + redireciona pro FORM
+            // (antes redirecionava pra clientes.php = lista, e o usuario NUNCA via o erro)
+            $msg = 'Erro ao salvar cliente.';
+            if (defined('DEBUG') && DEBUG) {
+                $msg .= ' Detalhes: ' . htmlspecialchars($e->getMessage());
+            }
+            Flash::set('erro', $msg);
+            $back = $returnTo ? $returnTo : ($id > 0 ? "cliente_form.php?id=$id" : 'cliente_form.php');
+            redirect($back);
         }
 
+        // Se chegou aqui sem catch, redireciona normalmente pra lista
         redirect('clientes.php');
     }
 

@@ -159,6 +159,101 @@ final class FaturaController
      * POST fatura_acao.php?acao=gerar
      * Body: mes_referencia, servicos[] (ids selecionados)
      */
+    /**
+     * Cria 1 contas_receber a partir de uma fatura.
+     * Retorna ['ok' => bool, 'id' => int|null, 'msg' => string]
+     *
+     * Regras:
+     * - Fatura precisa estar em status 'aberta' ou 'vencida'
+     * - Idempotente via numero_documento='FAT-{id}'
+     * - Auto-pick categoria ativa (1a da empresa)
+     * - Herda conta_bancaria_id do 1o item (cliente_servicos)
+     */
+    private function criarContaReceberPorFatura(int $faturaId, int $empresaId, int $usuarioId): array
+    {
+        $db = Database::getConnection();
+
+        // Carrega a fatura
+        $stmt = $db->prepare("
+            SELECT f.*, c.razao_social AS cliente_nome
+            FROM faturas f
+            JOIN clientes c ON c.id = f.cliente_id
+            WHERE f.id = ? AND f.empresa_id = ?
+        ");
+        $stmt->execute([$faturaId, $empresaId]);
+        $fatura = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$fatura) {
+            return ['ok' => false, 'id' => null, 'msg' => 'Fatura nao encontrada.'];
+        }
+
+        if (!in_array($fatura['status'], ['aberta', 'vencida'], true)) {
+            return ['ok' => false, 'id' => null, 'msg' => 'Status "' . $fatura['status'] . '" nao permite gerar CR.'];
+        }
+
+        // Idempotencia
+        $numeroDoc = 'FAT-' . $faturaId;
+        $stmtCheck = $db->prepare("SELECT id, status FROM contas_receber WHERE numero_documento = ? AND empresa_id = ?");
+        $stmtCheck->execute([$numeroDoc, $empresaId]);
+        $existente = $stmtCheck->fetch(PDO::FETCH_ASSOC);
+        if ($existente) {
+            return ['ok' => false, 'id' => (int)$existente['id'], 'msg' => "Ja existe CR #{$existente['id']} (status: {$existente['status']})"];
+        }
+
+        // 1o item -> conta_bancaria_id
+        $stmtItem = $db->prepare("SELECT cliente_servico_id FROM fatura_itens WHERE fatura_id = ? LIMIT 1");
+        $stmtItem->execute([$faturaId]);
+        $item = $stmtItem->fetch(PDO::FETCH_ASSOC);
+        if (!$item) {
+            return ['ok' => false, 'id' => null, 'msg' => 'Fatura sem itens.'];
+        }
+        $stmtServ = $db->prepare("SELECT conta_bancaria_id FROM cliente_servicos WHERE id = ?");
+        $stmtServ->execute([$item['cliente_servico_id']]);
+        $servico = $stmtServ->fetch(PDO::FETCH_ASSOC);
+        $contaBancariaId = !empty($servico['conta_bancaria_id']) ? (int)$servico['conta_bancaria_id'] : null;
+
+        // Auto-pick categoria ativa
+        $stmtCat = $db->prepare("SELECT id FROM categorias WHERE empresa_id = ? AND ativo = 1 ORDER BY id LIMIT 1");
+        $stmtCat->execute([$empresaId]);
+        $categoriaId = $stmtCat->fetchColumn();
+        if (!$categoriaId) {
+            return ['ok' => false, 'id' => null, 'msg' => 'Sem categoria de receita cadastrada.'];
+        }
+
+        // Descricao
+        $descricao = sprintf('Fatura #%d - %s - %s', $faturaId, $fatura['mes_referencia'], substr($fatura['cliente_nome'], 0, 80));
+
+        // Insere
+        try {
+            $stmtIns = $db->prepare("
+                INSERT INTO contas_receber (
+                    empresa_id, cliente_id, categoria_id, descricao, numero_documento,
+                    valor, data_emissao, data_vencimento, forma_recebimento,
+                    conta_bancaria_id, status, parcelas, parcela_atual,
+                    observacoes, usuario_criacao_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pendente', 1, 1, ?, ?)
+            ");
+            $stmtIns->execute([
+                $empresaId,
+                (int)$fatura['cliente_id'],
+                (int)$categoriaId,
+                $descricao,
+                $numeroDoc,
+                (float)$fatura['valor_total'],
+                date('Y-m-d'),
+                $fatura['data_vencimento'],
+                'boleto',
+                $contaBancariaId,
+                'Gerado da fatura #' . $faturaId . ' em ' . date('d/m/Y H:i'),
+                (int)$usuarioId,
+            ]);
+            $contaId = (int)$db->lastInsertId();
+            return ['ok' => true, 'id' => $contaId, 'msg' => "CR #{$contaId} gerada"];
+        } catch (Throwable $e) {
+            return ['ok' => false, 'id' => null, 'msg' => 'Erro ao inserir: ' . $e->getMessage()];
+        }
+    }
+
+
     public function gerar(): void
     {
         Auth::require();
@@ -230,6 +325,7 @@ final class FaturaController
 
         $db->beginTransaction();
         try {
+            $faturasIdsGeradas = [];
             foreach ($porCliente as $cid => $grp) {
                 // Pega o primeiro servico para herdar dia_vencimento e conta_bancaria
                 $primeiro = $grp['itens'][0];
@@ -288,6 +384,7 @@ final class FaturaController
                 }
 
                 $geradas++;
+                $faturasIdsGeradas[] = $faturaId;
             }
             $db->commit();
         } catch (Throwable $e) {
@@ -301,6 +398,33 @@ final class FaturaController
             '%d fatura(s) gerada(s) para %s. %d pulada(s) (ja existiam).',
             $geradas, $mes, $puladas
         );
+
+        // Se action=gerar_receber, gera CRs em loop (apos commit das faturas)
+        $action = (string)($_POST['action'] ?? 'gerar');
+        if ($action === 'gerar_receber' && !empty($faturasIdsGeradas)) {
+            $crGeradas = 0;
+            $crPuladas = 0;
+            $crErros   = [];
+            foreach ($faturasIdsGeradas as $fid) {
+                $res = $this->criarContaReceberPorFatura($fid, $empresaId, $usuarioId);
+                if ($res['ok']) {
+                    $crGeradas++;
+                } elseif ($res['id']) {
+                    $crPuladas++; // ja existia
+                } else {
+                    $crErros[] = "Fatura #{$fid}: " . $res['msg'];
+                }
+            }
+            $msg .= sprintf(
+                ' %d conta(s) a receber gerada(s). %d pulada(s) (ja existiam).',
+                $crGeradas, $crPuladas
+            );
+            if (!empty($crErros)) {
+                $msg .= " Erros: " . implode('; ', array_slice($crErros, 0, 3));
+                if (count($crErros) > 3) $msg .= " (+" . (count($crErros) - 3) . " mais)";
+            }
+        }
+
         $_SESSION['flash_sucesso'] = $msg;
         header('Location: faturas.php?mes=' . urlencode($mes));
         exit;

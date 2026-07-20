@@ -94,19 +94,6 @@ $isCancel = $fatura['status'] === 'cancelada';
     <pre style="background:#f9fafb; padding:12px; border-radius:6px; white-space:pre-wrap;"><?= htmlspecialchars($fatura['observacoes']) ?></pre>
 <?php endif; ?>
 
-        <?php if (!empty($podeGerarReceber) && !$isPaga && !$isCancel): ?>
-        <form method="post" action="fatura_acao.php?acao=gerar_receber" style="display:inline;"
-              onsubmit="return confirm('Gerar conta a receber a partir desta fatura? (acao idempotente: se ja existir, sera bloqueado)');">
-            <input type="hidden" name="id" value="<?= (int)$fatura['id'] ?>">
-            <button type="submit" class="btn btn-primary">🔁 Gerar Conta a Receber</button>
-        </form>
-        <?php elseif (!$isPaga && !$isCancel): ?>
-        <?php
-            // Mostra qual conta a receber foi gerada (para audit)
-            // Opcional: mostrar info rapida "Conta ja gerada #N"
-        ?>
-        <?php endif; ?>
-
 <!-- Acoes -->
 <div class="form-actions" style="margin-top: 24px; display:flex; gap: 12px; flex-wrap: wrap;">
     <?php if (!$isPaga && !$isCancel): ?>

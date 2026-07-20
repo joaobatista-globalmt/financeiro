@@ -76,22 +76,29 @@
         </table>
     </div>
 
-    <div class="form-actions" style="margin-top: 16px;">
-        <button type="submit" class="btn btn-primary" onclick="return confirmarGeracao()">
-            Gerar Faturas Selecionadas
+    <div class="form-actions" style="margin-top: 16px; display:flex; gap: 10px; flex-wrap: wrap;">
+        <button type="submit" name="action" value="gerar" class="btn btn-primary" onclick="return confirmarGeracao(false)">
+            &#128195; Gerar Faturas Selecionadas
+        </button>
+        <button type="submit" name="action" value="gerar_receber" class="btn" style="background:#15803d; color:#fff; border-color:#15803d;" onclick="return confirmarGeracao(true)">
+            &#128257; Gerar Faturas + Contas a Receber
         </button>
         <a href="faturas.php?mes=<?= urlencode($mes) ?>" class="btn">Cancelar</a>
     </div>
 </form>
 
 <script>
-function confirmarGeracao() {
+function confirmarGeracao(comContasReceber) {
     var marcados = document.querySelectorAll('.check-servico:checked').length;
     if (marcados === 0) {
         alert('Selecione ao menos um servico para gerar fatura.');
         return false;
     }
-    return confirm('Confirma a geracao de ' + marcados + ' fatura(s) para ' + document.querySelector('input[name="mes_referencia"]').value + '?');
+    var mes = document.querySelector('input[name="mes_referencia"]').value;
+    if (comContasReceber) {
+        return confirm('Confirma a geracao de ' + marcados + ' fatura(s) + contas a receber para ' + mes + '?\n\n(Idempotente: contas ja geradas serao puladas)');
+    }
+    return confirm('Confirma a geracao de ' + marcados + ' fatura(s) para ' + mes + '?');
 }
 document.getElementById('check-all').addEventListener('change', function() {
     document.querySelectorAll('.check-servico').forEach(function(c) { c.checked = this.checked; }.bind(this));

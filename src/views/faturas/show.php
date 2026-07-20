@@ -105,7 +105,11 @@ $isCancel = $fatura['status'] === 'cancelada';
         <form method="post" action="fatura_acao.php?acao=cancelar" style="display:inline;"
               onsubmit="return confirm('Cancelar esta fatura?');">
             <input type="hidden" name="id" value="<?= (int)$fatura['id'] ?>">
-            <input type="hidden" name="motivo" value="Cancelada pelo usuario">
+            <div class="form-group" style="margin: 8px 0;">
+                <label>Motivo do cancelamento:</label>
+                <textarea name="motivo" rows="2" maxlength="500" placeholder="Ex: cliente solicitou cancelamento, erro de cadastro, etc." style="width: 300px; padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 4px; font-family: inherit; font-size: 14px;"></textarea>
+            </div>
+            <!-- <input type="hidden" name="motivo" value="Cancelada pelo usuario"> -->
             <button type="submit" class="btn btn-danger">Cancelar Fatura</button>
         </form>
     <?php endif; ?>

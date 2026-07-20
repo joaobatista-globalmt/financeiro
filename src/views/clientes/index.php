@@ -6,6 +6,69 @@
     <?php endif; ?>
 </div>
 
+<?php
+/** @var array $filtros */
+/** @var bool $filtrosAplicados */
+/** @var int $totalGeral */
+$filtros = $filtros ?? [];
+?>
+
+<!-- Form de filtro -->
+<form method="get" class="form-filtros" style="margin: 16px 0; padding: 12px; background: #f9fafb; border-radius: 6px; border: 1px solid #e5e7eb;">
+    <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;">
+        <div class="form-group" style="margin: 0; flex: 1; min-width: 180px;">
+            <label>Razão Social</label>
+            <input type="text" name="razao_social" value="<?= htmlspecialchars($filtros['razao_social'] ?? '') ?>" placeholder="Buscar por razão social...">
+        </div>
+        <div class="form-group" style="margin: 0; flex: 1; min-width: 180px;">
+            <label>Nome Fantasia</label>
+            <input type="text" name="nome_fantasia" value="<?= htmlspecialchars($filtros['nome_fantasia'] ?? '') ?>" placeholder="Buscar por nome fantasia...">
+        </div>
+        <div class="form-group" style="margin: 0; flex: 1; min-width: 150px;">
+            <label>CPF/CNPJ</label>
+            <input type="text" name="cpf_cnpj" value="<?= htmlspecialchars($filtros['cpf_cnpj'] ?? '') ?>" placeholder="000.000.000-00 ou 00.000.000/0000-00">
+        </div>
+        <div class="form-group" style="margin: 0; min-width: 100px;">
+            <label>Tipo</label>
+            <select name="tipo">
+                <option value="">Todos</option>
+                <option value="F" <?= ($filtros['tipo'] ?? '') === 'F' ? 'selected' : '' ?>>Física</option>
+                <option value="J" <?= ($filtros['tipo'] ?? '') === 'J' ? 'selected' : '' ?>>Jurídica</option>
+            </select>
+        </div>
+        <div class="form-group" style="margin: 0; min-width: 100px;">
+            <label>Status</label>
+            <select name="ativo">
+                <option value="">Todos</option>
+                <option value="1" <?= ($filtros['ativo'] ?? '') === '1' ? 'selected' : '' ?>>Ativo</option>
+                <option value="0" <?= ($filtros['ativo'] ?? '') === '0' ? 'selected' : '' ?>>Inativo</option>
+            </select>
+        </div>
+        <div class="form-group" style="margin: 0; min-width: 90px;">
+            <label>Dia Venc.</label>
+            <input type="number" name="dia_vencimento" min="1" max="31" value="<?= htmlspecialchars($filtros['dia_vencimento'] ?? '') ?>" placeholder="1-31">
+        </div>
+        <div style="display: flex; gap: 6px;">
+            <button type="submit" class="btn btn-primary">🔍 Filtrar</button>
+            <?php if ($filtrosAplicados): ?>
+                <a href="clientes.php" class="btn">✕ Limpar</a>
+            <?php endif; ?>
+        </div>
+    </div>
+</form>
+
+<!-- Contador -->
+<div style="margin: 8px 0; color: #6b7280; font-size: 13px;">
+    <?php
+    $qtd = count($clientes);
+    if ($filtrosAplicados) {
+        echo "Exibindo <strong>$qtd</strong> de <strong>$totalGeral</strong> cliente(s) (filtro aplicado)";
+    } else {
+        echo "Exibindo <strong>$qtd</strong> cliente(s)";
+    }
+    ?>
+</div>
+
 <table class="table">
     <thead>
         <tr>

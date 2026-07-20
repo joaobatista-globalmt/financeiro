@@ -13,28 +13,90 @@ declare(strict_types=1);
 
 final class ClientesController
 {
-    public function index(): void
+        public function index(): void
     {
         Auth::require();
         $empresaId = Auth::user()['empresa_id'];
 
+        // Le filtros da URL
+        $fRazao   = trim((string)($_GET['razao_social']   ?? ''));
+        $fFant    = trim((string)($_GET['nome_fantasia']  ?? ''));
+        $fDoc     = trim((string)($_GET['cpf_cnpj']       ?? ''));
+        $fTipo    = (string)($_GET['tipo']               ?? '');
+        $fAtivo   = (string)($_GET['ativo']              ?? '');
+        $fDia     = (string)($_GET['dia_vencimento']     ?? '');
+
+        // Monta WHERE dinamico
+        $where  = ['c.empresa_id = ?'];
+        $params = [$empresaId];
+
+        if ($fRazao !== '') {
+            $where[] = 'c.razao_social LIKE ?';
+            $params[] = '%' . $fRazao . '%';
+        }
+        if ($fFant !== '') {
+            $where[] = 'c.nome_fantasia LIKE ?';
+            $params[] = '%' . $fFant . '%';
+        }
+        if ($fDoc !== '') {
+            // Limpa mascara: 10.915.101/0009-01 vira 10915101000901
+            $docLimpo = preg_replace('/[^0-9]/', '', $fDoc);
+            $where[] = 'REPLACE(REPLACE(REPLACE(REPLACE(c.cpf_cnpj, ".", ""), "/", ""), "-", ""), " ", "") LIKE ?';
+            $params[] = '%' . $docLimpo . '%';
+        }
+        if ($fTipo === 'F' || $fTipo === 'J') {
+            $where[] = 'c.tipo_pessoa = ?';
+            $params[] = $fTipo;
+        }
+        if ($fAtivo === '0' || $fAtivo === '1') {
+            $where[] = 'c.ativo = ?';
+            $params[] = (int)$fAtivo;
+        }
+        if ($fDia !== '' && (int)$fDia >= 1 && (int)$fDia <= 31) {
+            $where[] = 'c.dia_vencimento = ?';
+            $params[] = (int)$fDia;
+        }
+
+        $whereSql = implode(' AND ', $where);
+
         $db = Database::getConnection();
-        $stmt = $db->prepare('
+
+        // Total sem filtro aplicado (para o contador "X de Y")
+        $stmtTotal = $db->prepare('SELECT COUNT(*) FROM clientes c WHERE c.empresa_id = ?');
+        $stmtTotal->execute([$empresaId]);
+        $totalGeral = (int)$stmtTotal->fetchColumn();
+
+        // Lista filtrada
+        $stmt = $db->prepare("
             SELECT c.*,
                    (SELECT COUNT(*) FROM contas_receber WHERE cliente_id = c.id) AS total_contas,
                    (SELECT COUNT(*) FROM cliente_emails_nfse WHERE cliente_id = c.id) AS qtd_emails_nfse,
                    (SELECT COUNT(*) FROM cliente_emails_boleto WHERE cliente_id = c.id) AS qtd_emails_boleto
             FROM clientes c
-            WHERE c.empresa_id = ?
+            WHERE $whereSql
             ORDER BY c.ativo DESC, c.razao_social
-        ');
-        $stmt->execute([$empresaId]);
+        ");
+        $stmt->execute($params);
         $clientes = $stmt->fetchAll();
 
+        $filtrosAplicados = ($fRazao !== '' || $fFant !== '' || $fDoc !== ''
+            || $fTipo !== '' || $fAtivo !== '' || $fDia !== '');
+
         layout('Clientes', 'clientes/index.php', [
-            'clientes' => $clientes,
+            'clientes'          => $clientes,
+            'filtros'           => [
+                'razao_social'   => $fRazao,
+                'nome_fantasia'  => $fFant,
+                'cpf_cnpj'       => $fDoc,
+                'tipo'           => $fTipo,
+                'ativo'          => $fAtivo,
+                'dia_vencimento' => $fDia,
+            ],
+            'filtrosAplicados'  => $filtrosAplicados,
+            'totalGeral'        => $totalGeral,
         ]);
     }
+
 
     public function form(): void
     {

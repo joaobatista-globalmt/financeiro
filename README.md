@@ -256,3 +256,41 @@ Exportação: **CSV** (BOM UTF-8 + `;` para Excel BR) ou **PDF** (wkhtmltopdf, o
 João Batista — Globalmt
 Servidor: 192.168.70.45
 Repositório: https://github.com/joaobatista-globalmt/financeiro
+
+## Backup Automático (banco `financeiro`)
+
+Backup diário do banco via `mysqldump` + `gzip`, executado via cron às **2h da manhã**.
+
+- **Script:** `scripts/backup_diario.sh` (mysqldump + gzip + rotação 30 dias)
+- **Diretório:** `backups/diario/financeiro_YYYYMMDD_HHMMSS.sql.gz`
+- **Log:** `backups/backup_diario.log` (criado pelo script)
+- **Rotação:** mantém últimos 30 backups (1 mês); remove os mais antigos automaticamente
+- **Cron:** `0 2 * * * /home/sistema/financeiro/scripts/backup_diario.sh >> /home/sistema/financeiro/backups/cron.log 2>&1`
+
+### Como restaurar de um backup
+
+```bash
+# 1. Descompactar
+gunzip -k backups/diario/financeiro_20260720_020000.sql.gz
+
+# 2. Restaurar (CUIDADO: sobrescreve o banco atual!)
+mysql --host=127.0.0.1 --user=financeiro_app --password=financeiro_app_2026 financeiro < backups/diario/financeiro_20260720_020000.sql
+
+# 3. Recompactar
+gzip backups/diario/financeiro_20260720_020000.sql
+```
+
+### Como testar manualmente
+
+```bash
+bash /home/sistema/financeiro/scripts/backup_diario.sh
+cat /home/sistema/financeiro/backups/backup_diario.log
+ls -la /home/sistema/financeiro/backups/diario/
+```
+
+### Como adicionar ao cron (caso precise refazer)
+
+```bash
+# Adiciona a linha ao crontab do usuario sistema
+(crontab -l 2>/dev/null; echo "0 2 * * * /home/sistema/financeiro/scripts/backup_diario.sh >> /home/sistema/financeiro/backups/cron.log 2>&1") | crontab -
+```

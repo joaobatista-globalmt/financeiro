@@ -9,3 +9,7 @@ _build_entries.js
 *.tmp
 *.bak
 *.check
+# Backups diarios (gerados por scripts/backup_diario.sh)
+backups/diario/*.sql.gz
+backups/backup_diario.log
+backups/cron.log

@@ -48,8 +48,8 @@ table.ficha .valor { font-size: 11px; }
     <td class="valor text-right valor-destaque"><?= date('d/m/Y', strtotime($boleto['data_vencimento'])) ?></td>
 </tr></table>
 <table class="ficha"><tr>
-    <td class="label w-100">Cedente<br><span style="font-weight:normal;font-size:9px;"><?= htmlspecialchars($boleto['cedente_nome']) ?> - CNPJ: <?= htmlspecialchars($boleto['cedente_doc']) ?></span></td>
-    <td class="label text-right w-25">Agencia / Codigo Cedente</td>
+    <td class="label w-70">Cedente<br><span style="font-weight:normal;font-size:9px;"><?= htmlspecialchars($boleto['cedente_nome']) ?> - CNPJ: <?= htmlspecialchars($boleto['cedente_doc']) ?></span></td>
+    <td class="label text-right w-30">Agencia / Codigo Cedente</td>
 </tr><tr>
     <td></td>
     <td class="valor text-right agencia-destaque"><?= htmlspecialchars($boleto['agencia']) ?> / <?= htmlspecialchars($boleto['numero_conta'] . '-' . $boleto['digito']) ?></td>
@@ -92,8 +92,15 @@ table.ficha .valor { font-size: 11px; }
     <td class="valor">&nbsp;</td><td class="valor">&nbsp;</td><td class="valor">&nbsp;</td><td class="valor">&nbsp;</td><td class="valor">&nbsp;</td>
     <td class="valor text-right valor-destaque">R$ <?= number_format((float)$boleto['valor'], 2, ',', '.') ?></td>
 </tr></table>
-<div class="barcode"><?= str_repeat('|', 60) ?></div>
-<div class="barcode-fallback">(Codigo de barras - sera gerado em Fase 3.5 com digito verificador real)</div>
+<?php $barcodeImg = $boleto['barcode_png'] ?? ''; ?>
+<div class="barcode-img">
+    <?php if ($barcodeImg): ?>
+        <img src="<?= $barcodeImg ?>" alt="Codigo de barras: <?= htmlspecialchars($boleto['codigo_barras']) ?>" style="max-width: 100%; height: auto;">
+    <?php else: ?>
+        <div class="barcode-fallback"><?= str_repeat('|', 60) ?><br><small>(GD nao disponivel - codigo: <?= htmlspecialchars($boleto['codigo_barras']) ?>)</small></div>
+    <?php endif; ?>
+</div>
+<div class="barcode-number"><?= htmlspecialchars($boleto['codigo_barras']) ?></div>
 <div class="corte"></div>
 <!-- RECIBO DO SACADO -->
 <table class="banco"><tr>

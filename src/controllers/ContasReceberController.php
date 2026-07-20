@@ -482,6 +482,13 @@ final class ContasReceberController
         $boleto['codigo_barras'] = $this->calcularCodigoBarrasBB($boleto);
         $linhaSemFmt = $this->calcularLinhaDigitavelBB($boleto['codigo_barras']);
         $boleto['linha_digitavel'] = $this->formatarLinhaDigitavel($linhaSemFmt);
+
+        // Fase 3.5.2: gera IMAGEM PNG do codigo de barras AQUI (no controller, antes do template)
+        // porque o template nao tem acesso direto ao controller (precisa de reflection)
+        $boleto['barcode_png'] = $this->gerarBarcodePng($boleto['codigo_barras'], 600, 90);
+        if (empty($boleto['barcode_png'])) {
+            error_log('[BOLETO] Falha ao gerar barcode - GD=' . (function_exists('imagecreate') ? 'OK' : 'NAO') . ' codigo=' . $boleto['codigo_barras']);
+        }
         $boleto['valor_extenso'] = $this->valorPorExtenso((float)$boleto['valor']);
 
         ob_start();

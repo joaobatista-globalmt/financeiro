@@ -501,7 +501,7 @@ final class ContasReceberController
         file_put_contents($tmpHtml, $html);
 
         $cmd = sprintf(
-            'wkhtmltopdf --quiet --enable-local-file-access --orientation Portrait --margin-top 5mm --margin-bottom 5mm --margin-left 8mm --margin-right 8mm --print-media-type %s %s 2>&1',
+            'wkhtmltopdf --quiet --enable-local-file-access --page-size A5 --orientation Landscape --margin-top 5mm --margin-bottom 5mm --margin-left 5mm --margin-right 5mm --print-media-type %s %s 2>&1',
             escapeshellarg($tmpHtml),
             escapeshellarg($tmpPdf)
         );

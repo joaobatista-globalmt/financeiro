@@ -9,7 +9,7 @@ $bancoNome   = $boleto['banco_nome'] ?? 'Banco Padrao';
 <meta charset="UTF-8">
 <title>Boleto - CR #<?= (int)$boleto['id'] ?></title>
 <style>
-@page { size: A4 portrait; margin: 0; }
+@page { size: A5 landscape; margin: 5mm; }
 * { box-sizing: border-box; }
 body { font-family: Arial, sans-serif; font-size: 10px; margin: 0; padding: 0; }
 .boleto { width: 180mm; margin: 0 auto; padding: 4mm 0; }

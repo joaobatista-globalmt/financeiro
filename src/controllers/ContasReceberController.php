@@ -476,12 +476,12 @@ final class ContasReceberController
         }
 
         $boleto['nosso_numero'] = str_pad((string)$boleto['id'], 11, '0', STR_PAD_LEFT);
-        $valorCentavos = (int)round(((float)$boleto['valor']) * 100);
-        $boleto['linha_digitavel'] = '23793.' . substr($boleto['nosso_numero'], 0, 5) . ' '
-                                   . substr($boleto['nosso_numero'], 5, 5) . '.6 '
-                                   . substr($boleto['nosso_numero'], 10, 1) . ' '
-                                   . str_pad((string)$valorCentavos, 10, '0', STR_PAD_LEFT);
-        $boleto['codigo_barras']   = '237' . str_pad((string)$valorCentavos, 10, '0', STR_PAD_LEFT) . $boleto['nosso_numero'];
+
+        // Fase 3.5: codigo de barras REAL com DV modulo 11 (padrao Febraban)
+        // Banco do Brasil (001) - calculo real
+        $boleto['codigo_barras'] = $this->calcularCodigoBarrasBB($boleto);
+        $linhaSemFmt = $this->calcularLinhaDigitavelBB($boleto['codigo_barras']);
+        $boleto['linha_digitavel'] = $this->formatarLinhaDigitavel($linhaSemFmt);
         $boleto['valor_extenso'] = $this->valorPorExtenso((float)$boleto['valor']);
 
         ob_start();
@@ -583,6 +583,141 @@ final class ContasReceberController
 
         return implode(' e ', array_filter($partes));
     }
+
+    /**
+     * Calcula o DV (digito verificador) pelo modulo 11 padrao Febraban.
+     * @param string|int $numero Numero (string de digitos ou int)
+     * @return int DV (0-9)
+     */
+    private function dvModulo11($numero): int
+    {
+        $str = (string)$numero;
+        $soma = 0;
+        $peso = 2;
+        // Percorre da direita pra esquerda
+        for ($i = strlen($str) - 1; $i >= 0; $i--) {
+            $soma += (int)$str[$i] * $peso;
+            $peso++;
+            if ($peso > 9) $peso = 2;  // ciclico
+        }
+        $resto = $soma % 11;
+        $dv = 11 - $resto;
+        // Padrao Febraban: se DV >= 10, vira 0
+        if ($dv >= 10) $dv = 0;
+        // Se DV == 0 (soma multipla de 11), DV = 0 tambem
+        return $dv;
+    }
+
+    /**
+     * Monta o codigo de barras Febraban (44 posicoes) para Banco do Brasil.
+     * @param array $boleto dados do boleto (banco, agencia, conta, dv, nosso_numero, valor, data_vencimento)
+     * @return string 44 digitos
+     */
+    private function calcularCodigoBarrasBB(array $b): string
+    {
+        // Fator de vencimento: dias desde 07/10/1997
+        $base = strtotime('1997-10-07');
+        $venc = strtotime($b['data_vencimento']);
+        $fatorVenc = (int)round(($venc - $base) / 86400);
+
+        // Valor em centavos (10 digitos com zeros a esquerda)
+        $valorCent = (int)round(((float)$b['valor']) * 100);
+        $valorFmt = str_pad((string)$valorCent, 10, '0', STR_PAD_LEFT);
+
+        // Banco (3) + Moeda (1) = 4 pos
+        // Fator (4) + Valor (10) = 14 pos
+        // Campo Livre (25) = 25 pos
+        // DV (1) = 1 pos (calculado depois)
+        // Total = 44 pos
+
+        // Campo Livre BB: 0000(4) + Agencia(4) + Conta(7) + DV_Conta(1) + Nosso_Numero(11) + Carteira(2)
+        // Formato BB: "0000" + agencia(4) + conta(7) + conta_dv(1) + nosso_numero(11) + "21" (carteira 21 sem registro, ou "17" com registro)
+        $agencia = str_pad(preg_replace('/\D/', '', $b['agencia'] ?? ''), 4, '0', STR_PAD_LEFT);
+        $agencia = substr($agencia, -4);  // garante 4 digitos
+        $conta = str_pad(preg_replace('/\D/', '', $b['numero_conta'] ?? ''), 7, '0', STR_PAD_LEFT);
+        $conta = substr($conta, -7);
+        $contaDv = (string)($b['digito'] ?? '0');
+        $nossoNumero = str_pad((string)$b['nosso_numero'], 11, '0', STR_PAD_LEFT);
+        $nossoNumero = substr($nossoNumero, -11);
+        $carteira = '21';  // BB carteira 21 (sem registro) - configuravel no futuro
+
+        $campoLivre = '0000' . $agencia . $conta . $contaDv . $nossoNumero . $carteira;
+        $campoLivre = str_pad($campoLivre, 25, '0', STR_PAD_LEFT);
+
+        $banco = '001';
+        $moeda = '9';
+
+        // Monta 43 digitos (sem o DV geral) pra calcular o DV
+        $semDv = $banco . $moeda . $fatorVenc . $valorFmt . $campoLivre;
+        $semDv = str_pad($semDv, 43, '0', STR_PAD_LEFT);
+        $dvGeral = $this->dvModulo11($semDv);
+
+        // Codigo de barras final: banco(3) + moeda(1) + DV(1) + fator(4) + valor(10) + campoLivre(25) = 44
+        return $banco . $moeda . $dvGeral . $fatorVenc . $valorFmt . $campoLivre;
+    }
+
+    /**
+     * Converte o codigo de barras (44 pos) na linha digitavel (47 pos com 3 DVs).
+     * Formato: AAAA.A BBBBB.B CCCCCC.C D EEEEE.FFFFFF
+     * @param string $cb codigo de barras de 44 digitos
+     * @return string linha digitavel formatada (47 chars sem pontos/espacos)
+     */
+    private function calcularLinhaDigitavelBB(string $cb): string
+    {
+        // cb = BBB M D FFFF VVVVVVVVVV AAAA CCCCCCC C NNNNNNNNNNN 22 = 44
+        //      3   1 1 4    10             4    7       1 11         2
+        $banco = substr($cb, 0, 3);
+        $moeda = substr($cb, 3, 1);
+        $dv    = substr($cb, 4, 1);
+        $fator = substr($cb, 5, 4);
+        $valor = substr($cb, 9, 10);
+        $campLivre = substr($cb, 19, 25);
+
+        // Campo 1: banco(3) + moeda(1) + 5 primeiros do campLivre = 9 digitos
+        // DV1 = modulo 11 sobre esses 9 digitos
+        $c1 = substr($campLivre, 0, 5);
+        $bloco1 = $banco . $moeda . $c1;
+        $dv1 = $this->dvModulo11($bloco1);
+
+        // Campo 2: 6-15 do campLivre = 10 digitos
+        $c2 = substr($campLivre, 5, 10);
+        $dv2 = $this->dvModulo11($c2);
+
+        // Campo 3: 16-25 do campLivre = 10 digitos
+        $c3 = substr($campLivre, 15, 10);
+        $dv3 = $this->dvModulo11($c3);
+
+        // Linha: BBBB.B DCCCC CCCC.C CCCCC.C D FFFFVVVVVVVVVVV
+        //   AAAA.A BBBBB.B CCCCCC.C D EEEEE.FFFFFF
+        //   ^      ^       ^       ^ ^
+        //   C1     C2      C3     DV geral  fator + valor
+
+        // Formato padrao Febraban: AAAA.A B(5)B.B C(5)C.C D EEEEE.FFFFFF
+        $linha = $bloco1 . $dv1
+               . $c2 . $dv2
+               . $c3 . $dv3
+               . $dv
+               . $fator . $valor;
+
+        return $linha;
+    }
+
+    /**
+     * Formata a linha digitavel (47 digitos) com pontos/espacos padrao Febraban.
+     * Formato: AAAA.A BBBBB.B CCCCCC.C D EEEEE.FFFFFF
+     */
+    private function formatarLinhaDigitavel(string $linha): string
+    {
+        // $linha tem 47 digitos
+        $c1 = substr($linha, 0, 4) . '.' . substr($linha, 4, 5);
+        $c2 = substr($linha, 10, 5) . '.' . substr($linha, 15, 5);
+        $c3 = substr($linha, 21, 5) . '.' . substr($linha, 26, 5);
+        $dv = $linha[32];
+        $resto = substr($linha, 33);  // 14 chars: fator(4) + valor(10)
+        $c5 = substr($resto, 0, 5) . '.' . substr($resto, 5, 6);
+        return "$c1 $c2 $c3 $dv $c5";
+    }
+
 
     public function acao(): void
     {

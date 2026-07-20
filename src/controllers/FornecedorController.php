@@ -10,26 +10,88 @@ declare(strict_types=1);
 
 final class FornecedorController
 {
-    public function index(): void
+        public function index(): void
     {
         Auth::require();
         $empresaId = Auth::user()['empresa_id'];
 
+        // Le filtros da URL
+        $fRazao   = trim((string)($_GET['razao_social']   ?? ''));
+        $fFant    = trim((string)($_GET['nome_fantasia']  ?? ''));
+        $fCnpj    = trim((string)($_GET['cnpj']           ?? ''));
+        $fCidade  = trim((string)($_GET['cidade']         ?? ''));
+        $fUf      = trim((string)($_GET['uf']              ?? ''));
+        $fAtivo   = (string)($_GET['ativo']               ?? '');
+
+        // Monta WHERE dinamico
+        $where  = ['f.empresa_id = ?'];
+        $params = [$empresaId];
+
+        if ($fRazao !== '') {
+            $where[] = 'f.razao_social LIKE ?';
+            $params[] = '%' . $fRazao . '%';
+        }
+        if ($fFant !== '') {
+            $where[] = 'f.nome_fantasia LIKE ?';
+            $params[] = '%' . $fFant . '%';
+        }
+        if ($fCnpj !== '') {
+            // Limpa mascara: 00.000.000/0001-00 vira 00000000000100
+            $cnpjLimpo = preg_replace('/[^0-9]/', '', $fCnpj);
+            $where[] = 'REPLACE(REPLACE(REPLACE(cnpj, ".", ""), "/", ""), "-", "") LIKE ?';
+            $params[] = '%' . $cnpjLimpo . '%';
+        }
+        if ($fCidade !== '') {
+            $where[] = 'f.cidade LIKE ?';
+            $params[] = '%' . $fCidade . '%';
+        }
+        if ($fUf !== '' && strlen($fUf) === 2) {
+            $where[] = 'f.uf = ?';
+            $params[] = strtoupper($fUf);
+        }
+        if ($fAtivo === '0' || $fAtivo === '1') {
+            $where[] = 'f.ativo = ?';
+            $params[] = (int)$fAtivo;
+        }
+
+        $whereSql = implode(' AND ', $where);
+
         $db = Database::getConnection();
-        $stmt = $db->prepare('
+
+        // Total sem filtro aplicado (para o contador "X de Y")
+        $stmtTotal = $db->prepare('SELECT COUNT(*) FROM fornecedores f WHERE f.empresa_id = ?');
+        $stmtTotal->execute([$empresaId]);
+        $totalGeral = (int)$stmtTotal->fetchColumn();
+
+        // Lista filtrada
+        $stmt = $db->prepare("
             SELECT f.*,
                    (SELECT COUNT(*) FROM contas_pagar WHERE fornecedor_id = f.id) AS total_contas
             FROM fornecedores f
-            WHERE f.empresa_id = ?
+            WHERE $whereSql
             ORDER BY f.ativo DESC, f.razao_social
-        ');
-        $stmt->execute([$empresaId]);
+        ");
+        $stmt->execute($params);
         $fornecedores = $stmt->fetchAll();
 
+        $filtrosAplicados = ($fRazao !== '' || $fFant !== '' || $fCnpj !== ''
+            || $fCidade !== '' || $fUf !== '' || $fAtivo !== '');
+
         layout('Fornecedores', 'fornecedores/index.php', [
-            'fornecedores' => $fornecedores,
+            'fornecedores'      => $fornecedores,
+            'filtros'           => [
+                'razao_social'   => $fRazao,
+                'nome_fantasia'  => $fFant,
+                'cnpj'           => $fCnpj,
+                'cidade'         => $fCidade,
+                'uf'             => $fUf,
+                'ativo'          => $fAtivo,
+            ],
+            'filtrosAplicados'  => $filtrosAplicados,
+            'totalGeral'        => $totalGeral,
         ]);
     }
+
 
     public function form(): void
     {

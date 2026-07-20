@@ -6,6 +6,71 @@
     <?php endif; ?>
 </div>
 
+<?php
+/** @var array $filtros */
+/** @var bool $filtrosAplicados */
+/** @var int $totalGeral */
+$filtros = $filtros ?? [];
+$ufs = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
+?>
+
+<!-- Form de filtro -->
+<form method="get" class="form-filtros" style="margin: 16px 0; padding: 12px; background: #f9fafb; border-radius: 6px; border: 1px solid #e5e7eb;">
+    <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;">
+        <div class="form-group" style="margin: 0; flex: 1; min-width: 180px;">
+            <label>Razão Social</label>
+            <input type="text" name="razao_social" value="<?= htmlspecialchars($filtros['razao_social'] ?? '') ?>" placeholder="Buscar por razão social...">
+        </div>
+        <div class="form-group" style="margin: 0; flex: 1; min-width: 180px;">
+            <label>Nome Fantasia</label>
+            <input type="text" name="nome_fantasia" value="<?= htmlspecialchars($filtros['nome_fantasia'] ?? '') ?>" placeholder="Buscar por nome fantasia...">
+        </div>
+        <div class="form-group" style="margin: 0; flex: 1; min-width: 150px;">
+            <label>CNPJ</label>
+            <input type="text" name="cnpj" value="<?= htmlspecialchars($filtros['cnpj'] ?? '') ?>" placeholder="00.000.000/0000-00">
+        </div>
+        <div class="form-group" style="margin: 0; flex: 1; min-width: 130px;">
+            <label>Cidade</label>
+            <input type="text" name="cidade" value="<?= htmlspecialchars($filtros['cidade'] ?? '') ?>" placeholder="Cidade...">
+        </div>
+        <div class="form-group" style="margin: 0; min-width: 80px;">
+            <label>UF</label>
+            <select name="uf">
+                <option value="">Todas</option>
+                <?php foreach ($ufs as $uf): ?>
+                    <option value="<?= $uf ?>" <?= ($filtros['uf'] ?? '') === $uf ? 'selected' : '' ?>><?= $uf ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div class="form-group" style="margin: 0; min-width: 100px;">
+            <label>Status</label>
+            <select name="ativo">
+                <option value="">Todos</option>
+                <option value="1" <?= ($filtros['ativo'] ?? '') === '1' ? 'selected' : '' ?>>Ativo</option>
+                <option value="0" <?= ($filtros['ativo'] ?? '') === '0' ? 'selected' : '' ?>>Inativo</option>
+            </select>
+        </div>
+        <div style="display: flex; gap: 6px;">
+            <button type="submit" class="btn btn-primary">🔍 Filtrar</button>
+            <?php if ($filtrosAplicados): ?>
+                <a href="fornecedores.php" class="btn">✕ Limpar</a>
+            <?php endif; ?>
+        </div>
+    </div>
+</form>
+
+<!-- Contador -->
+<div style="margin: 8px 0; color: #6b7280; font-size: 13px;">
+    <?php
+    $qtd = count($fornecedores);
+    if ($filtrosAplicados) {
+        echo "Exibindo <strong>$qtd</strong> de <strong>$totalGeral</strong> fornecedor(es) (filtro aplicado)";
+    } else {
+        echo "Exibindo <strong>$qtd</strong> fornecedor(es)";
+    }
+    ?>
+</div>
+
 <table class="table">
     <thead>
         <tr>

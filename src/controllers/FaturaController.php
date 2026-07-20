@@ -1354,6 +1354,7 @@ final class FaturaController
     public function acao(): void
     {
         $acao = $_REQUEST['acao'] ?? 'index';
+        $id   = (int)($_REQUEST['id'] ?? 0);
 
         switch ($acao) {
             case 'index':   $this->index();   break;

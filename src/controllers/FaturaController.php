@@ -815,6 +815,94 @@ final class FaturaController
     }
 
 
+    /**
+     * Relatorio de faturas geradas, com filtros por data_emissao e mes_referencia.
+     * GET relatorio_faturas.php
+     * Query params:
+     *   data_inicial     YYYY-MM-DD (opcional)
+     *   data_final       YYYY-MM-DD (opcional)
+     *   mes_referencia   YYYY-MM   (opcional)
+     *
+     * Mostra: tabela com faturas no periodo + cards de totalizadores
+     * (qtd, valor total, recebido, pendente).
+     */
+    public function relatorio(): void
+    {
+        Auth::require();
+        Permissao::requer('visualizar', 'faturas.php');
+        $empresaId = Auth::user()['empresa_id'];
+        $db = Database::getConnection();
+
+        // Parametros
+        $dataInicial    = trim((string)($_GET['data_inicial'] ?? ''));
+        $dataFinal      = trim((string)($_GET['data_final'] ?? ''));
+        $mesRef         = trim((string)($_GET['mes_referencia'] ?? ''));
+
+        // Monta WHERE com filtros opcionais
+        $where  = ['f.empresa_id = ?'];
+        $params = [$empresaId];
+
+        if ($dataInicial !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dataInicial)) {
+            $where[] = 'f.data_emissao >= ?';
+            $params[] = $dataInicial;
+        }
+        if ($dataFinal !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dataFinal)) {
+            $where[] = 'f.data_emissao <= ?';
+            $params[] = $dataFinal;
+        }
+        if ($mesRef !== '' && preg_match('/^\d{4}-\d{2}$/', $mesRef)) {
+            $where[] = 'f.mes_referencia = ?';
+            $params[] = $mesRef;
+        }
+
+        $whereSql = implode(' AND ', $where);
+
+        // Query principal (com dados do cliente via JOIN)
+        $sql = "
+            SELECT f.id, f.data_emissao, f.mes_referencia, f.data_vencimento,
+                   f.valor_total, f.status, f.data_pagamento, f.valor_pago,
+                   c.razao_social AS cliente_nome, c.cpf_cnpj
+            FROM faturas f
+            JOIN clientes c ON c.id = f.cliente_id
+            WHERE $whereSql
+            ORDER BY f.data_emissao DESC, f.id DESC
+        ";
+
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        $faturas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Totalizadores
+        $totalGeral    = 0.0;
+        $totalPago     = 0.0;
+        $totalPendente = 0.0;
+        $countPorStatus = [];
+        foreach ($faturas as $f) {
+            $v = (float)$f['valor_total'];
+            $totalGeral += $v;
+            if ($f['status'] === 'paga') {
+                $totalPago += $v;
+            } elseif (in_array($f['status'], ['aberta', 'vencida', 'parcial'], true)) {
+                $totalPendente += $v;
+            }
+            $countPorStatus[$f['status']] = ($countPorStatus[$f['status']] ?? 0) + 1;
+        }
+
+        // Meses disponiveis para o dropdown
+        $stmtMeses = $db->prepare("
+            SELECT DISTINCT mes_referencia
+            FROM faturas
+            WHERE empresa_id = ?
+            ORDER BY mes_referencia DESC
+        ");
+        $stmtMeses->execute([$empresaId]);
+        $mesesDisponiveis = $stmtMeses->fetchAll(PDO::FETCH_COLUMN);
+
+        // Render view
+        $title = 'Relatorio de Faturas';
+        require __DIR__ . '/../views/relatorio_faturas.php';
+    }
+
     public function acao(): void
     {
         $acao = $_REQUEST['acao'] ?? 'index';

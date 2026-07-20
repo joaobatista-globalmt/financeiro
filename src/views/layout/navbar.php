@@ -40,6 +40,7 @@ $empresaId  = (int)($currentUser['empresa_id'] ?? 0);
             </ul>
         </li>
         <li><a href="faturas.php">Faturas</a></li>
+        <li><a href="relatorio_faturas.php">Relatorio</a></li>
         <li><a href="relatorios.php">Relatórios</a></li>
         <?php if (Permissao::tem('gerenciar_empresas') || Permissao::tem('gerenciar_usuarios')): ?>
         <li class="dropdown">

@@ -103,6 +103,7 @@ $isCancel = $fatura['status'] === 'cancelada';
         </div>
 
         <a href="fatura_acao.php?acao=editar&id=<?= (int)$fatura['id'] ?>" class="btn" style="background: #f59e0b; color: white; border-color: #f59e0b;">✏️ Editar Fatura</a>
+        <a href="javascript:void(0);" onclick="abrirBoleto(<?= (int)$fatura['id'] ?>)" class="btn" style="background: #2563eb; color: white; border-color: #2563eb;">📄 Gerar Boleto</a>
         <form method="post" action="fatura_acao.php?acao=cancelar" style="display:inline;"
               onsubmit="return confirm('Cancelar esta fatura?');">
             <input type="hidden" name="id" value="<?= (int)$fatura['id'] ?>">
@@ -135,3 +136,18 @@ $isCancel = $fatura['status'] === 'cancelada';
 .badge-cancelada { background:#e5e7eb; color:#374151; }
 @media (max-width: 768px) { .fatura-grid { grid-template-columns: 1fr; } }
 </style>
+
+<script>
+function abrirBoleto(faturaId) {
+    fetch('fatura_acao.php?acao=get_cr_id&id=' + faturaId)
+        .then(r => r.json())
+        .then(d => {
+            if (d.cr_id && d.cr_id > 0) {
+                window.open('boleto_pdf.php?id=' + d.cr_id, '_blank');
+            } else {
+                alert('Esta fatura ainda nao tem Conta a Receber. Gere uma primeiro (botao Gerar CR no formulario).');
+            }
+        })
+        .catch(e => alert('Erro: ' + e.message));
+}
+</script>

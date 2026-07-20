@@ -420,6 +420,117 @@ final class ContasReceberController
         }
     }
 
+    public function gerarBoletoPdf(int $id): void
+    {
+        Auth::require();
+        Permissao::requer('visualizar', 'contas_receber.php');
+        $empresaId = Auth::user()['empresa_id'];
+        $db = Database::getConnection();
+
+        $stmt = $db->prepare('
+            SELECT cr.*,
+                   c.razao_social AS cliente_nome, c.cpf_cnpj AS cliente_doc,
+                   c.endereco AS cliente_endereco, c.numero AS cliente_numero,
+                   c.bairro AS cliente_bairro, c.cidade AS cliente_cidade,
+                   c.uf AS cliente_uf, c.cep AS cliente_cep,
+                   e.razao_social AS empresa_nome, e.cnpj AS empresa_cnpj,
+                   cb.banco AS banco_nome, cb.agencia, cb.numero_conta, cb.digito,
+                   cb.titular AS cedente_nome, cb.cpf_cnpj_titular AS cedente_doc
+            FROM contas_receber cr
+            JOIN clientes c ON c.id = cr.cliente_id
+            JOIN empresas e ON e.id = cr.empresa_id
+            LEFT JOIN contas_bancarias cb ON cb.id = cr.conta_bancaria_id
+            WHERE cr.id = ? AND cr.empresa_id = ?
+        ');
+        $stmt->execute([$id, $empresaId]);
+        $boleto = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$boleto) {
+            Flash::set('erro', 'Conta a receber nao encontrada.');
+            redirect('contas_receber.php');
+        }
+
+        if (empty($boleto['banco_nome']) || $boleto['banco_nome'] === 'A definir') {
+            $stmtCb = $db->prepare('
+                SELECT banco, agencia, numero_conta, digito, titular, cpf_cnpj_titular
+                FROM contas_bancarias
+                WHERE empresa_id = ? AND ativo = 1 AND banco IS NOT NULL AND banco != "A definir"
+                ORDER BY id ASC LIMIT 1
+            ');
+            $stmtCb->execute([$empresaId]);
+            $cb = $stmtCb->fetch(PDO::FETCH_ASSOC);
+            if ($cb) {
+                $boleto['banco_nome']   = $cb['banco'];
+                $boleto['agencia']      = $cb['agencia'];
+                $boleto['numero_conta'] = $cb['numero_conta'];
+                $boleto['digito']       = $cb['digito'];
+                $boleto['cedente_nome'] = $cb['titular'] ?? $boleto['empresa_nome'];
+                $boleto['cedente_doc']  = $cb['cpf_cnpj_titular'] ?? $boleto['empresa_cnpj'];
+            } else {
+                $boleto['banco_nome']   = 'Banco Padrao';
+                $boleto['agencia']      = '0000';
+                $boleto['numero_conta'] = '00000';
+                $boleto['digito']       = '0';
+                $boleto['cedente_nome'] = $boleto['empresa_nome'];
+                $boleto['cedente_doc']  = $boleto['empresa_cnpj'];
+            }
+        }
+
+        $boleto['nosso_numero'] = str_pad((string)$boleto['id'], 11, '0', STR_PAD_LEFT);
+        $valorCentavos = (int)round(((float)$boleto['valor']) * 100);
+        $boleto['linha_digitavel'] = '23793.' . substr($boleto['nosso_numero'], 0, 5) . ' '
+                                   . substr($boleto['nosso_numero'], 5, 5) . '.6 '
+                                   . substr($boleto['nosso_numero'], 10, 1) . ' '
+                                   . str_pad((string)$valorCentavos, 10, '0', STR_PAD_LEFT);
+        $boleto['codigo_barras']   = '237' . str_pad((string)$valorCentavos, 10, '0', STR_PAD_LEFT) . $boleto['nosso_numero'];
+        $boleto['valor_extenso'] = $this->valorPorExtenso((float)$boleto['valor']);
+
+        ob_start();
+        $boleto_view = $boleto;
+        require __DIR__ . '/../views/boleto/template.php';
+        $html = ob_get_clean();
+
+        $tmpHtml = '/tmp/boleto_' . $id . '_' . time() . '.html';
+        $tmpPdf  = '/tmp/boleto_' . $id . '_' . time() . '.pdf';
+        file_put_contents($tmpHtml, $html);
+
+        $cmd = sprintf(
+            'wkhtmltopdf --quiet --enable-local-file-access --orientation Portrait --margin-top 5mm --margin-bottom 5mm --margin-left 8mm --margin-right 8mm --print-media-type %s %s 2>&1',
+            escapeshellarg($tmpHtml),
+            escapeshellarg($tmpPdf)
+        );
+        exec($cmd, $output, $rc);
+
+        if ($rc !== 0 || !file_exists($tmpPdf)) {
+            error_log('[Boleto] wkhtmltopdf falhou (rc=' . $rc . '): ' . implode("\n", $output));
+            @unlink($tmpHtml);
+            @unlink($tmpPdf);
+            Flash::set('erro', 'Erro ao gerar PDF do boleto.');
+            redirect('contas_receber.php');
+        }
+
+        @unlink($tmpHtml);
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: inline; filename="boleto_CR_' . $id . '_' . date('Ymd') . '.pdf"');
+        header('Content-Length: ' . filesize($tmpPdf));
+        header('Cache-Control: private, max-age=0, must-revalidate');
+        readfile($tmpPdf);
+        @unlink($tmpPdf);
+        exit;
+    }
+
+    private function valorPorExtenso(float $valor): string
+    {
+        if ($valor <= 0) return 'zero reais';
+        $inteiro = (int)$valor;
+        $centavos = (int)round(($valor - $inteiro) * 100);
+        $fmt = new NumberFormatter('pt_BR', NumberFormatter::SPELLOUT);
+        $ext = '';
+        if ($inteiro > 0) $ext .= $fmt->format($inteiro) . ' reais';
+        if ($centavos > 0) { if ($ext) $ext .= ' e '; $ext .= $fmt->format($centavos) . ' centavos'; }
+        return $ext;
+    }
+
     public function acao(): void
     {
         Auth::require();

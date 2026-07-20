@@ -1351,6 +1351,19 @@ final class FaturaController
         }
     }
 
+    private function getCrIdPorFatura(int $faturaId): void
+    {
+        Auth::require();
+        $empresaId = Auth::user()['empresa_id'];
+        $db = Database::getConnection();
+        $stmt = $db->prepare('SELECT id FROM contas_receber WHERE empresa_id = ? AND numero_documento = ? LIMIT 1');
+        $stmt->execute([$empresaId, 'FAT-' . $faturaId]);
+        $crId = $stmt->fetchColumn();
+        header('Content-Type: application/json');
+        echo json_encode(['cr_id' => $crId ? (int)$crId : null, 'fatura_id' => $faturaId]);
+        exit;
+    }
+
     public function acao(): void
     {
         $acao = $_REQUEST['acao'] ?? 'index';
@@ -1364,6 +1377,7 @@ final class FaturaController
             case 'pagar':   $this->pagar();   break;
             case 'cancelar':$this->cancelar();break;
             case 'excluir': $this->excluir(); break;
+            case 'get_cr_id':  $this->getCrIdPorFatura($id);  break;
             case 'gerar_receber': $this->gerarReceber(); break;
             case 'editar':        $this->editarFatura($id);       break;
             case 'salvar_edicao': $this->salvarEdicaoFatura($id); break;

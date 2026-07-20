@@ -213,6 +213,20 @@ final class ClientesController
                 $stmt->execute($dados);
                 $novoId = $id;
             } else {
+
+        // Constraint UNIQUE: checa duplicata por (empresa_id, cpf_cnpj)
+        $cpfCnpj = trim((string)($dados['cpf_cnpj'] ?? ''));
+        if ($cpfCnpj !== '') {
+            $idAtual = (int)($dados['id'] ?? 0);
+            $stmtChk = $db->prepare('SELECT id, razao_social FROM clientes WHERE empresa_id = ? AND cpf_cnpj = ? AND id != ? LIMIT 1');
+            $stmtChk->execute([$empresaId, $cpfCnpj, $idAtual]);
+            $duplicata = $stmtChk->fetch(PDO::FETCH_ASSOC);
+            if ($duplicata) {
+                Flash::set('erro', 'Ja existe um cliente com este CPF/CNPJ nesta empresa: #' . $duplicata['id'] . ' - ' . $duplicata['razao_social']);
+                redirect('cliente_acao.php?acao=form' . ($idAtual ? '&id=' . $idAtual : ''));
+            }
+        }
+
                 $sql = 'INSERT INTO clientes
                             (empresa_id, razao_social, nome_fantasia, cpf_cnpj, tipo_pessoa,
                              endereco, endereco_maps, cidade, uf, cep, telefone, email, contato, observacoes, ativo,

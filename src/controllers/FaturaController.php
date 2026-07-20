@@ -1261,6 +1261,96 @@ final class FaturaController
         require __DIR__ . '/../views/relatorio_faturas_vencidas.php';
     }
 
+    private function editarFatura(int $id): void
+    {
+        Auth::require();
+        Permissao::requer('editar', 'faturas.php');
+        $empresaId = Auth::user()['empresa_id'];
+        $db = Database::getConnection();
+
+        $stmt = $db->prepare('SELECT f.*, c.razao_social AS cliente_nome FROM faturas f JOIN clientes c ON c.id = f.cliente_id WHERE f.id = ? AND f.empresa_id = ?');
+        $stmt->execute([$id, $empresaId]);
+        $fatura = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$fatura) {
+            Flash::set('erro', 'Fatura nao encontrada.');
+            redirect('faturas.php');
+        }
+        if ($fatura['status'] === 'paga') {
+            Flash::set('erro', 'Fatura ja paga nao pode ser editada.');
+            redirect("fatura_acao.php?acao=show&id=$id");
+        }
+
+        require __DIR__ . '/../views/faturas/editar.php';
+    }
+
+    private function salvarEdicaoFatura(int $id): void
+    {
+        Auth::require();
+        Permissao::requer('editar', 'faturas.php');
+        $empresaId = Auth::user()['empresa_id'];
+        $db = Database::getConnection();
+
+        $stmt = $db->prepare('SELECT * FROM faturas WHERE id = ? AND empresa_id = ?');
+        $stmt->execute([$id, $empresaId]);
+        $fatura = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$fatura) {
+            Flash::set('erro', 'Fatura nao encontrada.');
+            redirect('faturas.php');
+        }
+        if ($fatura['status'] === 'paga') {
+            Flash::set('erro', 'Fatura ja paga nao pode ser editada.');
+            redirect("fatura_acao.php?acao=show&id=$id");
+        }
+
+        $valorTotal     = (float)str_replace(',', '.', $_POST['valor_total']     ?? '0');
+        $valorDesconto  = (float)str_replace(',', '.', $_POST['valor_desconto']  ?? '0');
+        $valorJuros     = (float)str_replace(',', '.', $_POST['valor_juros']     ?? '0');
+        $valorMulta     = (float)str_replace(',', '.', $_POST['valor_multa']     ?? '0');
+        $dataVencimento = trim((string)($_POST['data_vencimento'] ?? ''));
+        $observacoes    = trim((string)($_POST['observacoes']    ?? ''));
+
+        if ($valorTotal <= 0) {
+            Flash::set('erro', 'Valor total deve ser maior que zero.');
+            redirect("fatura_acao.php?acao=editar&id=$id");
+        }
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dataVencimento)) {
+            Flash::set('erro', 'Data de vencimento invalida.');
+            redirect("fatura_acao.php?acao=editar&id=$id");
+        }
+
+        try {
+            $stmtU = $db->prepare("
+                UPDATE faturas SET
+                    valor_total = :valor_total,
+                    valor_desconto = :valor_desconto,
+                    valor_juros = :valor_juros,
+                    valor_multa = :valor_multa,
+                    data_vencimento = :data_vencimento,
+                    observacoes = :observacoes
+                WHERE id = :id AND empresa_id = :empresa_id AND status != 'paga'
+            ");
+            $stmtU->execute([
+                'valor_total'     => $valorTotal,
+                'valor_desconto'  => $valorDesconto,
+                'valor_juros'     => $valorJuros,
+                'valor_multa'     => $valorMulta,
+                'data_vencimento' => $dataVencimento,
+                'observacoes'     => $observacoes ?: null,
+                'id'              => $id,
+                'empresa_id'      => $empresaId,
+            ]);
+
+            Flash::set('sucesso', 'Fatura #' . $id . ' atualizada com sucesso.');
+            redirect("fatura_acao.php?acao=show&id=$id");
+        } catch (PDOException $e) {
+            error_log('[Faturas] Erro ao editar: ' . $e->getMessage());
+            Flash::set('erro', 'Erro ao salvar edicao.');
+            redirect("fatura_acao.php?acao=editar&id=$id");
+        }
+    }
+
     public function acao(): void
     {
         $acao = $_REQUEST['acao'] ?? 'index';
@@ -1274,6 +1364,8 @@ final class FaturaController
             case 'cancelar':$this->cancelar();break;
             case 'excluir': $this->excluir(); break;
             case 'gerar_receber': $this->gerarReceber(); break;
+            case 'editar':        $this->editarFatura($id);       break;
+            case 'salvar_edicao': $this->salvarEdicaoFatura($id); break;
             default:
                 header('Location: faturas.php');
                 exit;

@@ -102,6 +102,7 @@ $isCancel = $fatura['status'] === 'cancelada';
             <em>Conta a Receber</em> correspondente em <a href="contas_receber.php">Contas a Receber</a>.
         </div>
 
+        <a href="fatura_acao.php?acao=editar&id=<?= (int)$fatura['id'] ?>" class="btn" style="background: #f59e0b; color: white; border-color: #f59e0b;">✏️ Editar Fatura</a>
         <form method="post" action="fatura_acao.php?acao=cancelar" style="display:inline;"
               onsubmit="return confirm('Cancelar esta fatura?');">
             <input type="hidden" name="id" value="<?= (int)$fatura['id'] ?>">

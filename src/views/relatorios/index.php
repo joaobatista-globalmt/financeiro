@@ -42,4 +42,9 @@
         <h3>⚠️ Atrasadas</h3>
         <p>Contas vencidas e não pagas/recebidas, ordenadas por dias de atraso.</p>
     </a>
+
+    <a href="relatorio_faturas.php" class="report-card">
+        <h3>📄 Faturas Geradas</h3>
+        <p>Lista todas as faturas geradas no período, com totalizadores por status. Filtros por data de emissão e mês de referência. Exporta para PDF.</p>
+    </a>
 </div>

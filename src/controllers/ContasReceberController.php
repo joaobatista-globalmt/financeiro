@@ -351,6 +351,75 @@ final class ContasReceberController
         redirect('contas_receber.php');
     }
 
+    /**
+     * Fase 2.7: Quando uma CR eh marcada como 'recebida', atualiza a fatura
+     * correspondente (numero_documento='FAT-{id}') para status='paga'.
+     *
+     * Logica:
+     * - numero_documento da CR segue padrao 'FAT-{fatura_id}'
+     * - Extrai o ID da fatura
+     * - UPDATE faturas SET status='paga', data_pagamento=?, valor_pago=?
+     *   WHERE id=? AND empresa_id=? AND status != 'cancelada'
+     *
+     * Retorna: ['ok' => bool, 'msg' => string, 'fatura_id' => int|null]
+     */
+    private function atualizarFaturaPorContaReceber(
+        int $contaId,
+        int $empresaId,
+        string $dataRecebimento,
+        float $valorRecebido
+    ): array {
+        $db = Database::getConnection();
+
+        // Busca o numero_documento da CR
+        $stmt = $db->prepare("SELECT numero_documento FROM contas_receber WHERE id = ? AND empresa_id = ?");
+        $stmt->execute([$contaId, $empresaId]);
+        $numeroDoc = $stmt->fetchColumn();
+
+        if (!$numeroDoc || strpos($numeroDoc, 'FAT-') !== 0) {
+            // CR nao veio de uma fatura - nao faz nada
+            return ['ok' => true, 'msg' => 'CR sem vinculo com fatura (numero_documento=' . ($numeroDoc ?: 'NULL') . ')', 'fatura_id' => null];
+        }
+
+        // Extrai o ID da fatura: 'FAT-123' -> 123
+        $faturaId = (int)substr($numeroDoc, 4);
+        if ($faturaId <= 0) {
+            return ['ok' => false, 'msg' => 'numero_documento invalido: ' . $numeroDoc, 'fatura_id' => null];
+        }
+
+        // Atualiza a fatura (so se NAO estiver cancelada)
+        $stmtUp = $db->prepare("
+            UPDATE faturas SET
+                status = 'paga',
+                data_pagamento = :data_pagamento,
+                valor_pago = :valor_pago,
+                updated_at = NOW()
+            WHERE id = :id
+              AND empresa_id = :empresa_id
+              AND status != 'cancelada'
+        ");
+        $stmtUp->execute([
+            'data_pagamento' => $dataRecebimento,
+            'valor_pago'     => $valorRecebido,
+            'id'             => $faturaId,
+            'empresa_id'     => $empresaId,
+        ]);
+
+        $rows = $stmtUp->rowCount();
+        if ($rows > 0) {
+            return ['ok' => true, 'msg' => "Fatura #{$faturaId} atualizada para 'paga'", 'fatura_id' => $faturaId];
+        } else {
+            // Pode ser que a fatura nao exista, ou ja esteja cancelada, ou status ja era 'paga'
+            $stmtChk = $db->prepare("SELECT status FROM faturas WHERE id = ? AND empresa_id = ?");
+            $stmtChk->execute([$faturaId, $empresaId]);
+            $statusAtual = $stmtChk->fetchColumn();
+            if (!$statusAtual) {
+                return ['ok' => false, 'msg' => "Fatura #{$faturaId} nao encontrada", 'fatura_id' => $faturaId];
+            }
+            return ['ok' => true, 'msg' => "Fatura #{$faturaId} ja estava '{$statusAtual}' - sem alteracao", 'fatura_id' => $faturaId];
+        }
+    }
+
     public function acao(): void
     {
         Auth::require();
@@ -433,6 +502,16 @@ final class ContasReceberController
                     $id,
                     null
                 );
+
+                // Fase 2.7: se a CR veio de uma fatura (numero_documento='FAT-{id}'),
+                // atualiza a fatura automaticamente para status='paga'
+                $hookResult = $this->atualizarFaturaPorContaReceber($id, $empresaId, $dataRecebimento, $valorRecebido);
+                if ($hookResult['fatura_id']) {
+                    // Log no error_log pra audit (em prod) e no Flash pro user
+                    error_log('[ContasReceber Fase 2.7] ' . $hookResult['msg']);
+                    $msgAtual = $_SESSION['flash_sucesso'] ?? '';
+                    $_SESSION['flash_sucesso'] = $msgAtual . ' | ' . $hookResult['msg'];
+                }
 
                 Flash::set('sucesso', 'Recebimento registrado e lançado no extrato.');
             } elseif ($acao === 'cancelar') {

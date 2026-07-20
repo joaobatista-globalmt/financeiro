@@ -97,19 +97,10 @@ $isCancel = $fatura['status'] === 'cancelada';
 <!-- Acoes -->
 <div class="form-actions" style="margin-top: 24px; display:flex; gap: 12px; flex-wrap: wrap;">
     <?php if (!$isPaga && !$isCancel): ?>
-        <form method="post" action="fatura_acao.php?acao=pagar" style="display:flex; gap:8px; align-items:flex-end; flex-wrap: wrap;">
-            <input type="hidden" name="id" value="<?= (int)$fatura['id'] ?>">
-            <div class="form-group" style="margin:0;">
-                <label>Data pgto</label>
-                <input type="date" name="data_pagamento" value="<?= date('Y-m-d') ?>" required>
-            </div>
-            <div class="form-group" style="margin:0;">
-                <label>Valor pago (R$)</label>
-                <input type="text" name="valor_pago" inputmode="decimal"
-                       value="<?= number_format((float)$fatura['valor_total'], 2, ',', '.') ?>" required>
-            </div>
-            <button type="submit" class="btn btn-primary">Marcar como Paga</button>
-        </form>
+        <div style="padding: 10px 14px; background: #fef3c7; border: 1px solid #fbbf24; border-radius: 6px; color: #92400e; font-size: 13px; margin: 0;">
+            <strong>Pagamento:</strong> a fatura &eacute; paga automaticamente ao quitar a
+            <em>Conta a Receber</em> correspondente em <a href="contas_receber.php">Contas a Receber</a>.
+        </div>
 
         <form method="post" action="fatura_acao.php?acao=cancelar" style="display:inline;"
               onsubmit="return confirm('Cancelar esta fatura?');">

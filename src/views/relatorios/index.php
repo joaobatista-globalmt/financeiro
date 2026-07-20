@@ -47,4 +47,19 @@
         <h3>📄 Faturas Geradas</h3>
         <p>Lista todas as faturas geradas no período, com totalizadores por status. Filtros por data de emissão e mês de referência. Exporta para PDF.</p>
     </a>
+
+    <a href="relatorio_faturas_por_cliente.php" class="report-card">
+        <h3>👥 Faturas por Cliente</h3>
+        <p>Agrupado por cliente com totais por cliente, quantidade de faturas e valor recebido/pendente. Ordenado por valor total (maior primeiro).</p>
+    </a>
+
+    <a href="relatorio_faturas_por_status.php" class="report-card">
+        <h3>📊 Faturas por Status</h3>
+        <p>Distribuicao de faturas por status (aberta/paga/vencida/parcial/cancelada) com barra de progresso e valor recebido/pendente.</p>
+    </a>
+
+    <a href="relatorio_faturas_vencidas.php" class="report-card">
+        <h3>⚠️ Faturas Vencidas</h3>
+        <p>Faturas com vencimento passado (ate hoje) e status != paga/cancelada. Ordenadas por dias de atraso, com faixa de atraso (1-7, 8-30, 31-60, 61-90, 90+).</p>
+    </a>
 </div>

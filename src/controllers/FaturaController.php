@@ -1110,6 +1110,157 @@ final class FaturaController
 
 
 
+
+    public function relatorioPorCliente(): void
+    {
+        Auth::require();
+        $empresaId = Auth::user()['empresa_id'];
+        $db = Database::getConnection();
+
+        $dataInicial  = trim((string)($_GET['data_inicial'] ?? ''));
+        $dataFinal    = trim((string)($_GET['data_final'] ?? ''));
+        $mesRef       = trim((string)($_GET['mes_referencia'] ?? ''));
+
+        $where  = ['f.empresa_id = ?'];
+        $params = [$empresaId];
+        if ($dataInicial !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dataInicial)) {
+            $where[] = 'f.data_emissao >= ?'; $params[] = $dataInicial;
+        }
+        if ($dataFinal !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dataFinal)) {
+            $where[] = 'f.data_emissao <= ?'; $params[] = $dataFinal;
+        }
+        if ($mesRef !== '' && preg_match('/^\d{4}-\d{2}$/', $mesRef)) {
+            $where[] = 'f.mes_referencia = ?'; $params[] = $mesRef;
+        }
+        $whereSql = implode(' AND ', $where);
+        $whereFat = $whereSql === 'f.empresa_id = ?' ? '' : str_replace('f.empresa_id = ? AND ', '', $whereSql);
+
+        $sql = "
+            SELECT c.id AS cliente_id, c.razao_social, c.cpf_cnpj,
+                   COUNT(f.id) AS qtd_faturas,
+                   COALESCE(SUM(f.valor_total), 0) AS valor_total,
+                   SUM(CASE WHEN f.status = 'paga' THEN 1 ELSE 0 END) AS qtd_pagas,
+                   SUM(CASE WHEN f.status IN ('aberta', 'vencida', 'parcial') THEN 1 ELSE 0 END) AS qtd_pendentes,
+                   COALESCE(SUM(CASE WHEN f.status = 'paga' THEN f.valor_total ELSE 0 END), 0) AS valor_pago,
+                   COALESCE(SUM(CASE WHEN f.status IN ('aberta', 'vencida', 'parcial') THEN f.valor_total ELSE 0 END), 0) AS valor_pendente
+            FROM clientes c
+            LEFT JOIN faturas f ON f.cliente_id = c.id AND f.empresa_id = c.empresa_id " . ($whereFat ? "AND $whereFat" : '') . "
+            WHERE c.empresa_id = ? AND c.ativo = 1
+            GROUP BY c.id, c.razao_social, c.cpf_cnpj
+            HAVING qtd_faturas > 0
+            ORDER BY valor_total DESC
+        ";
+
+        $paramsFinal = array_merge(array_slice($params, 1), [$empresaId]);
+        $stmt = $db->prepare($sql);
+        $stmt->execute($paramsFinal);
+        $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $totalGeralClientes = count($clientes);
+        $totalGeralValor    = array_sum(array_column($clientes, 'valor_total'));
+        $totalGeralPago     = array_sum(array_column($clientes, 'valor_pago'));
+        $totalGeralPendente = array_sum(array_column($clientes, 'valor_pendente'));
+
+        $stmtMeses = $db->prepare("SELECT DISTINCT mes_referencia FROM faturas WHERE empresa_id = ? ORDER BY mes_referencia DESC");
+        $stmtMeses->execute([$empresaId]);
+        $mesesDisponiveis = $stmtMeses->fetchAll(PDO::FETCH_COLUMN);
+
+        require __DIR__ . '/../views/relatorio_faturas_por_cliente.php';
+    }
+
+
+    public function relatorioPorStatus(): void
+    {
+        Auth::require();
+        $empresaId = Auth::user()['empresa_id'];
+        $db = Database::getConnection();
+
+        $dataInicial = trim((string)($_GET['data_inicial'] ?? ''));
+        $dataFinal   = trim((string)($_GET['data_final'] ?? ''));
+        $mesRef      = trim((string)($_GET['mes_referencia'] ?? ''));
+
+        $where  = ['empresa_id = ?'];
+        $params = [$empresaId];
+        if ($dataInicial !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dataInicial)) {
+            $where[] = 'data_emissao >= ?'; $params[] = $dataInicial;
+        }
+        if ($dataFinal !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dataFinal)) {
+            $where[] = 'data_emissao <= ?'; $params[] = $dataFinal;
+        }
+        if ($mesRef !== '' && preg_match('/^\d{4}-\d{2}$/', $mesRef)) {
+            $where[] = 'mes_referencia = ?'; $params[] = $mesRef;
+        }
+        $whereSql = implode(' AND ', $where);
+
+        $stmt = $db->prepare("
+            SELECT status,
+                   COUNT(*) AS qtd,
+                   COALESCE(SUM(valor_total), 0) AS valor_total,
+                   COALESCE(SUM(valor_pago), 0) AS valor_pago
+            FROM faturas
+            WHERE $whereSql
+            GROUP BY status
+            ORDER BY qtd DESC
+        ");
+        $stmt->execute($params);
+        $stats = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $totalQtd = array_sum(array_column($stats, 'qtd'));
+        $totalValor = array_sum(array_column($stats, 'valor_total'));
+
+        $stmtMeses = $db->prepare("SELECT DISTINCT mes_referencia FROM faturas WHERE empresa_id = ? ORDER BY mes_referencia DESC");
+        $stmtMeses->execute([$empresaId]);
+        $mesesDisponiveis = $stmtMeses->fetchAll(PDO::FETCH_COLUMN);
+
+        require __DIR__ . '/../views/relatorio_faturas_por_status.php';
+    }
+
+
+    public function relatorioVencidas(): void
+    {
+        Auth::require();
+        $empresaId = Auth::user()['empresa_id'];
+        $db = Database::getConnection();
+
+        $sql = "
+            SELECT f.id, f.data_emissao, f.mes_referencia, f.data_vencimento, f.valor_total,
+                   f.status, f.data_pagamento, f.valor_pago,
+                   DATEDIFF(CURDATE(), f.data_vencimento) AS dias_atraso,
+                   c.razao_social AS cliente_nome, c.cpf_cnpj, c.telefone, c.email,
+                   cr.id AS cr_id, cr.status AS cr_status
+            FROM faturas f
+            JOIN clientes c ON c.id = f.cliente_id
+            LEFT JOIN contas_receber cr ON cr.numero_documento = CONCAT('FAT-', f.id)
+              AND cr.empresa_id = f.empresa_id
+            WHERE f.empresa_id = ?
+              AND f.data_vencimento < CURDATE()
+              AND f.status NOT IN ('paga', 'cancelada')
+            ORDER BY dias_atraso DESC, f.valor_total DESC
+        ";
+        $stmt = $db->prepare($sql);
+        $stmt->execute([$empresaId]);
+        $vencidas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $totalQtd   = count($vencidas);
+        $totalValor = array_sum(array_column($vencidas, 'valor_total'));
+        $totalPago  = array_sum(array_column($vencidas, 'valor_pago'));
+        $totalPendente = $totalValor - $totalPago;
+
+        $faixas = ['1-7' => 0, '8-30' => 0, '31-60' => 0, '61-90' => 0, '90+' => 0];
+        $valoresFaixa = ['1-7' => 0, '8-30' => 0, '31-60' => 0, '61-90' => 0, '90+' => 0];
+        foreach ($vencidas as $v) {
+            $d = (int)$v['dias_atraso'];
+            $val = (float)$v['valor_total'];
+            if ($d <= 7) { $faixas['1-7']++; $valoresFaixa['1-7'] += $val; }
+            elseif ($d <= 30) { $faixas['8-30']++; $valoresFaixa['8-30'] += $val; }
+            elseif ($d <= 60) { $faixas['31-60']++; $valoresFaixa['31-60'] += $val; }
+            elseif ($d <= 90) { $faixas['61-90']++; $valoresFaixa['61-90'] += $val; }
+            else { $faixas['90+']++; $valoresFaixa['90+'] += $val; }
+        }
+
+        require __DIR__ . '/../views/relatorio_faturas_vencidas.php';
+    }
+
     public function acao(): void
     {
         $acao = $_REQUEST['acao'] ?? 'index';

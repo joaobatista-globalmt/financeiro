@@ -902,6 +902,215 @@ final class FaturaController
         $title = 'Relatorio de Faturas';
         require __DIR__ . '/../views/relatorio_faturas.php';
     }
+    /**
+     * Exporta o relatorio de faturas em PDF (via wkhtmltopdf).
+     * GET relatorio_faturas_pdf.php?data_inicial=...&data_final=...&mes_referencia=...
+     *
+     * Segue o padrao ja usado em RelatorioController::gerarPdf() do financeiro.
+     */
+    public function relatorioPdf(): void
+    {
+        Auth::require();
+        Permissao::requer('visualizar', 'faturas.php');
+        $empresaId = Auth::user()['empresa_id'];
+        $db = Database::getConnection();
+
+        // Mesmos parametros do relatorio() HTML
+        $dataInicial    = trim((string)($_GET['data_inicial'] ?? ''));
+        $dataFinal      = trim((string)($_GET['data_final'] ?? ''));
+        $mesRef         = trim((string)($_GET['mes_referencia'] ?? ''));
+
+        // Empresa (para o cabecalho)
+        $stmtEmp = $db->prepare("SELECT nome_fantasia, razao_social FROM empresas WHERE id = ?");
+        $stmtEmp->execute([$empresaId]);
+        $empresa = $stmtEmp->fetch(PDO::FETCH_ASSOC) ?: ['nome_fantasia' => 'Empresa', 'razao_social' => ''];
+
+        // Monta WHERE com filtros opcionais
+        $where  = ['f.empresa_id = ?'];
+        $params = [$empresaId];
+
+        if ($dataInicial !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dataInicial)) {
+            $where[] = 'f.data_emissao >= ?';
+            $params[] = $dataInicial;
+        }
+        if ($dataFinal !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dataFinal)) {
+            $where[] = 'f.data_emissao <= ?';
+            $params[] = $dataFinal;
+        }
+        if ($mesRef !== '' && preg_match('/^\d{4}-\d{2}$/', $mesRef)) {
+            $where[] = 'f.mes_referencia = ?';
+            $params[] = $mesRef;
+        }
+
+        $whereSql = implode(' AND ', $where);
+
+        // Query principal
+        $sql = "
+            SELECT f.id, f.data_emissao, f.mes_referencia, f.data_vencimento,
+                   f.valor_total, f.status, f.data_pagamento, f.valor_pago,
+                   c.razao_social AS cliente_nome, c.cpf_cnpj
+            FROM faturas f
+            JOIN clientes c ON c.id = f.cliente_id
+            WHERE $whereSql
+            ORDER BY f.data_emissao ASC, f.id ASC
+        ";
+
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        $faturas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Totalizadores
+        $totalGeral    = 0.0;
+        $totalPago     = 0.0;
+        $totalPendente = 0.0;
+        $countPorStatus = [];
+        foreach ($faturas as $f) {
+            $v = (float)$f['valor_total'];
+            $totalGeral += $v;
+            if ($f['status'] === 'paga') {
+                $totalPago += $v;
+            } elseif (in_array($f['status'], ['aberta', 'vencida', 'parcial'], true)) {
+                $totalPendente += $v;
+            }
+            $countPorStatus[$f['status']] = ($countPorStatus[$f['status']] ?? 0) + 1;
+        }
+
+        // Monta o HTML do PDF (limpo, sem nav, sem form)
+        $periodo = '';
+        if ($dataInicial || $dataFinal) {
+            $periodo = ($dataInicial ? date('d/m/Y', strtotime($dataInicial)) : '...') . ' ate ' . ($dataFinal ? date('d/m/Y', strtotime($dataFinal)) : '...');
+        } else {
+            $periodo = 'Todas as datas';
+        }
+        if ($mesRef) {
+            $periodo .= ' (mes ref.: ' . htmlspecialchars($mesRef) . ')';
+        }
+
+        $empresaNome = htmlspecialchars($empresa['nome_fantasia'] ?: $empresa['razao_social']);
+        $emitidoEm = date('d/m/Y H:i');
+
+        $html = '<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Relatorio de Faturas</title>
+<style>
+    body { font-family: Arial, sans-serif; font-size: 10pt; color: #000; margin: 0; padding: 0; }
+    .header { border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 12px; }
+    .header h1 { font-size: 16pt; margin: 0 0 4px 0; }
+    .header .info { font-size: 9pt; color: #555; }
+    table { width: 100%; border-collapse: collapse; font-size: 9pt; }
+    th, td { padding: 4px 6px; border: 1px solid #d0d0d0; }
+    th { background: #f0f0f0; text-align: left; font-weight: 600; }
+    tr.total-row { background: #f9f9f9; font-weight: 700; }
+    .right { text-align: right; }
+    .center { text-align: center; }
+    .totals { margin-top: 16px; padding: 8px 12px; background: #f9fafb; border: 1px solid #ddd; font-size: 9pt; }
+    .totals table { border: 0; }
+    .totals td { border: 0; padding: 2px 8px; }
+    .badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 8pt; }
+    .footer { margin-top: 20px; font-size: 8pt; color: #666; text-align: center; border-top: 1px solid #ddd; padding-top: 6px; }
+</style>
+</head>
+<body>
+    <div class="header">
+        <h1>Relatorio de Faturas Geradas</h1>
+        <div class="info"><strong>Empresa:</strong> ' . $empresaNome . ' &nbsp;|&nbsp; <strong>Periodo:</strong> ' . $periodo . ' &nbsp;|&nbsp; <strong>Emitido em:</strong> ' . $emitidoEm . '</div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th class="center" style="width: 40px;">ID</th>
+                <th class="center" style="width: 70px;">Emissao</th>
+                <th class="center" style="width: 60px;">Mes Ref.</th>
+                <th>Cliente</th>
+                <th class="right" style="width: 90px;">Valor (R$)</th>
+                <th class="center" style="width: 70px;">Status</th>
+                <th class="center" style="width: 70px;">Vencimento</th>
+                <th class="center" style="width: 70px;">Pago em</th>
+            </tr>
+        </thead>
+        <tbody>';
+
+        if (empty($faturas)) {
+            $html .= '<tr><td colspan="8" class="center" style="padding: 16px; color: #888;">Nenhuma fatura encontrada com os filtros aplicados.</td></tr>';
+        } else {
+            foreach ($faturas as $f) {
+                $html .= '<tr>';
+                $html .= '<td class="center">#' . (int)$f['id'] . '</td>';
+                $html .= '<td class="center">' . date('d/m/Y', strtotime($f['data_emissao'])) . '</td>';
+                $html .= '<td class="center">' . htmlspecialchars($f['mes_referencia']) . '</td>';
+                $html .= '<td>' . htmlspecialchars($f['cliente_nome']) . '</td>';
+                $html .= '<td class="right">' . number_format((float)$f['valor_total'], 2, ',', '.') . '</td>';
+                $html .= '<td class="center"><span class="badge">' . htmlspecialchars($f['status']) . '</span></td>';
+                $html .= '<td class="center">' . date('d/m/Y', strtotime($f['data_vencimento'])) . '</td>';
+                $html .= '<td class="center">' . ($f['data_pagamento'] ? date('d/m/Y', strtotime($f['data_pagamento'])) : '-') . '</td>';
+                $html .= '</tr>';
+            }
+        }
+
+        $html .= '</tbody></table>';
+
+        // Totalizadores
+        $html .= '<div class="totals">
+            <strong>Totalizadores</strong>
+            <table style="margin-top: 6px;">
+                <tr>
+                    <td><strong>Qtd faturas:</strong> ' . count($faturas) . '</td>
+                    <td class="right"><strong>Valor total:</strong> R$ ' . number_format($totalGeral, 2, ',', '.') . '</td>
+                </tr>
+                <tr>
+                    <td><strong>Recebido:</strong> R$ ' . number_format($totalPago, 2, ',', '.') . '</td>
+                    <td class="right"><strong>Pendente:</strong> R$ ' . number_format($totalPendente, 2, ',', '.') . '</td>
+                </tr>
+            </table>
+        </div>';
+
+        $html .= '<div class="footer">Sistema Financeiro &middot; Relatorio gerado em ' . $emitidoEm . '</div>';
+
+        $html .= '</body></html>';
+
+        // Salva HTML temporario e chama wkhtmltopdf
+        $tmpHtml = tempnam(sys_get_temp_dir(), 'rel_fat_') . '.html';
+        $tmpPdf  = tempnam(sys_get_temp_dir(), 'rel_fat_') . '.pdf';
+        file_put_contents($tmpHtml, $html);
+
+        $cmd = sprintf(
+            'wkhtmltopdf --quiet --orientation Portrait --margin-top 10mm --margin-bottom 10mm --margin-left 10mm --margin-right 10mm %s %s 2>&1',
+            escapeshellarg($tmpHtml),
+            escapeshellarg($tmpPdf)
+        );
+        exec($cmd, $output, $rc);
+
+        // Limpa HTML temp
+        @unlink($tmpHtml);
+
+        if ($rc !== 0 || !file_exists($tmpPdf)) {
+            @unlink($tmpPdf);
+            $_SESSION['flash_erro'] = 'Erro ao gerar PDF (rc=' . $rc . '). Verifique se wkhtmltopdf esta instalado.';
+            header('Location: relatorio_faturas.php?' . http_build_query(array_filter([
+                'data_inicial' => $dataInicial,
+                'data_final'   => $dataFinal,
+                'mes_referencia' => $mesRef,
+            ])));
+            exit;
+        }
+
+        // Stream do PDF
+        $filename = 'relatorio_faturas_' . date('Ymd_His') . '.pdf';
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Content-Length: ' . filesize($tmpPdf));
+        header('Cache-Control: no-store, no-cache, must-revalidate');
+        readfile($tmpPdf);
+
+        // Limpa PDF temp
+        @unlink($tmpPdf);
+        exit;
+    }
+
+
 
     public function acao(): void
     {

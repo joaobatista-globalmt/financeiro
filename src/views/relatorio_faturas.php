@@ -27,6 +27,7 @@
         </div>
         <div style="display: flex; gap: 8px;">
             <button type="submit" class="btn btn-primary">🔍 Filtrar</button>
+            <button type="submit" formaction="relatorio_faturas_pdf.php" formmethod="get" formtarget="_blank" class="btn" style="background:#dc2626; color:white; border-color:#dc2626;">📄 Exportar PDF</button>
             <a href="relatorio_faturas.php" class="btn">Limpar</a>
         </div>
     </div>

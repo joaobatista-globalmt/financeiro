@@ -38,6 +38,26 @@
                 <td class="actions">
                     <?php if (Permissao::tem('gerenciar_cadastros')): ?>
                         <a href="fornecedor_form.php?id=<?= (int)$f['id'] ?>" class="btn btn-sm">Editar</a>
+                        <?php if ($f['ativo']): ?>
+                            <form method="post" action="fornecedor_acao.php" style="display:inline" onsubmit="return confirm('Desativar o fornecedor &quot;<?= htmlspecialchars(addslashes($f['razao_social']), ENT_QUOTES) ?>&quot;?')">
+                                <input type="hidden" name="id" value="<?= (int)$f['id'] ?>">
+                                <input type="hidden" name="acao" value="desativar">
+                                <button type="submit" class="btn btn-sm">Desativar</button>
+                            </form>
+                        <?php else: ?>
+                            <form method="post" action="fornecedor_acao.php" style="display:inline" onsubmit="return confirm('Ativar o fornecedor &quot;<?= htmlspecialchars(addslashes($f['razao_social']), ENT_QUOTES) ?>&quot;?')">
+                                <input type="hidden" name="id" value="<?= (int)$f['id'] ?>">
+                                <input type="hidden" name="acao" value="ativar">
+                                <button type="submit" class="btn btn-sm">Ativar</button>
+                            </form>
+                        <?php endif; ?>
+                    <?php endif; ?>
+                    <?php if (Permissao::tem('excluir')): ?>
+                        <form method="post" action="fornecedor_acao.php" style="display:inline" onsubmit="return confirm('ATENÇÃO: Excluir PERMANENTEMENTE o fornecedor &quot;<?= htmlspecialchars(addslashes($f['razao_social']), ENT_QUOTES) ?>&quot;?\n\nEsta ação NÃO pode ser desfeita. Se houver contas a pagar vinculadas, a exclusão será bloqueada.')">
+                            <input type="hidden" name="id" value="<?= (int)$f['id'] ?>">
+                            <input type="hidden" name="acao" value="excluir">
+                            <button type="submit" class="btn btn-sm btn-danger">Excluir</button>
+                        </form>
                     <?php endif; ?>
                 </td>
             </tr>

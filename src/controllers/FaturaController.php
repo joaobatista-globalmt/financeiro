@@ -53,7 +53,7 @@ final class FaturaController
         }
 
         $sql = "
-            SELECT f.*, c.razao_social AS cliente_nome, c.cnpj_cpf AS cliente_doc
+            SELECT f.*, c.razao_social AS cliente_nome, c.cpf_cnpj AS cliente_doc
             FROM faturas f
             JOIN clientes c ON c.id = f.cliente_id
             WHERE " . implode(' AND ', $where) . "
@@ -122,16 +122,8 @@ final class FaturaController
                    cs.dia_vencimento,
                    cs.tipo_vencimento,
                    cs.tipo_cobranca,
-                   cs.conta_bancaria_id,
-                   COALESCE((
-                       SELECT COUNT(*)
-                       FROM faturas fi
-                       WHERE fi.cliente_servico_id_via_item IS NULL
-                         AND fi.empresa_id = cs.empresa_id
-                         AND fi.cliente_id = cs.cliente_id
-                         AND fi.mes_referencia = ?
-                   ), 0) AS ja_existe
-            FROM cliente_servicos cs
+                   cs.conta_bancaria_id
+    FROM cliente_servicos cs
             JOIN clientes c ON c.id = cs.cliente_id
             WHERE cs.empresa_id = ?
               AND cs.ativo = 1
@@ -145,7 +137,7 @@ final class FaturaController
             ORDER BY c.razao_social, cs.descricao
         ";
         $stmt = $db->prepare($sql);
-        $stmt->execute([$mes, $empresaId, $fim, $ini, $mes]);
+        $stmt->execute([$empresaId, $fim, $ini, $mes]);
         $candidatos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         // Totalizadores
@@ -331,7 +323,7 @@ final class FaturaController
         $db = Database::getConnection();
 
         $stmt = $db->prepare("
-            SELECT f.*, c.razao_social AS cliente_nome, c.cnpj_cpf AS cliente_doc,
+            SELECT f.*, c.razao_social AS cliente_nome, c.cpf_cnpj AS cliente_doc,
                    c.email AS cliente_email
             FROM faturas f
             JOIN clientes c ON c.id = f.cliente_id

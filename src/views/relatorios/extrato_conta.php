@@ -44,24 +44,24 @@
 <div class="cards-grid">
     <div class="card card-info">
         <div class="card-title">Saldo Anterior</div>
-        <div class="card-value">R$ <?= number_format((float)$resumo['saldo_anterior'], 2, ',', '.') ?></div>
+        <div class="card-value" style="text-align: right;">R$ <?= number_format((float)$resumo['saldo_anterior'], 2, ',', '.') ?></div>
         <div class="card-sub">em <?= dataIsoParaBr($dataInicio) ?></div>
     </div>
     <div class="card card-success">
         <div class="card-title">Entradas (período)</div>
-        <div class="card-value">+ R$ <?= number_format((float)$resumo['total_entradas'], 2, ',', '.') ?></div>
+        <div class="card-value" style="text-align: right;">+ R$ <?= number_format((float)$resumo['total_entradas'], 2, ',', '.') ?></div>
     </div>
     <div class="card card-danger">
         <div class="card-title">Saídas (período)</div>
-        <div class="card-value">- R$ <?= number_format((float)$resumo['total_saidas'], 2, ',', '.') ?></div>
+        <div class="card-value" style="text-align: right;">- R$ <?= number_format((float)$resumo['total_saidas'], 2, ',', '.') ?></div>
     </div>
     <div class="card card-<?= $resumo['saldo_periodo'] < 0 ? 'danger' : 'primary' ?>">
         <div class="card-title">Saldo em <?= dataIsoParaBr($dataFim) ?></div>
-        <div class="card-value">R$ <?= number_format((float)$resumo['saldo_periodo'], 2, ',', '.') ?></div>
+        <div class="card-value" style="text-align: right;">R$ <?= number_format((float)$resumo['saldo_periodo'], 2, ',', '.') ?></div>
     </div>
     <div class="card card-<?= $resumo['saldo_atual'] < 0 ? 'danger' : 'primary' ?>">
         <div class="card-title">Saldo Atual (vivo)</div>
-        <div class="card-value">R$ <?= number_format((float)$resumo['saldo_atual'], 2, ',', '.') ?></div>
+        <div class="card-value" style="text-align: right;">R$ <?= number_format((float)$resumo['saldo_atual'], 2, ',', '.') ?></div>
         <div class="card-sub">inclui movs fora do período</div>
     </div>
 </div>
@@ -70,8 +70,9 @@
 <table class="table">
     <thead>
         <tr>
-            <?php foreach ($dados['headers'] as $h): ?>
-                <th><?= htmlspecialchars($h) ?></th>
+            <?php foreach ($dados['headers'] as $i => $h): ?>
+                <?php $align = in_array($h, ['Valor', 'Saldo']) ? 'text-align: right;' : ''; ?>
+                <th style="<?= $align ?>"><?= htmlspecialchars($h) ?></th>
             <?php endforeach; ?>
         </tr>
     </thead>
@@ -80,8 +81,9 @@
             <tr><td colspan="<?= count($dados['headers']) ?>" class="muted center">Nenhuma movimentação no período.</td></tr>
         <?php else: foreach ($dados['rows'] as $row): ?>
             <tr>
-                <?php foreach ($row as $cell): ?>
-                    <td><?= htmlspecialchars((string)$cell) ?></td>
+                <?php foreach ($row as $i => $cell): ?>
+                    <?php $align = in_array($dados['headers'][$i], ['Valor', 'Saldo']) ? 'text-align: right;' : ''; ?>
+                    <td style="<?= $align ?>"><?= htmlspecialchars((string)$cell) ?></td>
                 <?php endforeach; ?>
             </tr>
         <?php endforeach; endif; ?>

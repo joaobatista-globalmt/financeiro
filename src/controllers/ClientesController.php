@@ -102,6 +102,7 @@ final class ClientesController
             'cpf_cnpj'        => trim($_POST['cpf_cnpj'] ?? '') ?: null,
             'tipo_pessoa'     => $_POST['tipo_pessoa'],
             'endereco'        => trim($_POST['endereco'] ?? '') ?: null,
+            'endereco_maps'   => trim($_POST['endereco_maps'] ?? '') ?: null,
             'cidade'          => trim($_POST['cidade'] ?? '') ?: null,
             'uf'              => strtoupper(trim($_POST['uf'] ?? '')) ?: null,
             'cep'             => trim($_POST['cep'] ?? '') ?: null,
@@ -137,7 +138,7 @@ final class ClientesController
             if ($id > 0) {
                 $sql = 'UPDATE clientes SET
                             razao_social=:razao_social, nome_fantasia=:nome_fantasia, cpf_cnpj=:cpf_cnpj,
-                            tipo_pessoa=:tipo_pessoa, endereco=:endereco, cidade=:cidade, uf=:uf,
+                            tipo_pessoa=:tipo_pessoa, endereco=:endereco, endereco_maps=:endereco_maps, cidade=:cidade, uf=:uf,
                             cep=:cep, telefone=:telefone, email=:email, contato=:contato,
                             observacoes=:observacoes, ativo=:ativo,
                             dia_vencimento=:dia_vencimento, tipo_vencimento=:tipo_vencimento,
@@ -152,12 +153,12 @@ final class ClientesController
             } else {
                 $sql = 'INSERT INTO clientes
                             (empresa_id, razao_social, nome_fantasia, cpf_cnpj, tipo_pessoa,
-                             endereco, cidade, uf, cep, telefone, email, contato, observacoes, ativo,
+                             endereco, endereco_maps, cidade, uf, cep, telefone, email, contato, observacoes, ativo,
                              dia_vencimento, tipo_vencimento, emite_nfse, emite_boleto,
                              pix_chave, pix_tipo)
                         VALUES
                             (:empresa_id, :razao_social, :nome_fantasia, :cpf_cnpj, :tipo_pessoa,
-                             :endereco, :cidade, :uf, :cep, :telefone, :email, :contato, :observacoes, :ativo,
+                             :endereco, :endereco_maps, :cidade, :uf, :cep, :telefone, :email, :contato, :observacoes, :ativo,
                              :dia_vencimento, :tipo_vencimento, :emite_nfse, :emite_boleto,
                              :pix_chave, :pix_tipo)';
                 $stmt = $db->prepare($sql);
@@ -237,17 +238,52 @@ final class ClientesController
 
         $db = Database::getConnection();
 
-        if ($acao === 'excluir' && $id > 0) {
-            $stmt = $db->prepare('DELETE FROM clientes WHERE id = ? AND empresa_id = ?');
-            $stmt->execute([$id, $empresaId]);
-            // E-mails relacionados são excluídos via CASCADE
-            Flash::set('sucesso', 'Cliente excluído.');
-        } elseif ($acao === 'toggle' && $id > 0) {
-            $stmt = $db->prepare('UPDATE clientes SET ativo = NOT ativo WHERE id = ? AND empresa_id = ?');
-            $stmt->execute([$id, $empresaId]);
-            Flash::set('sucesso', 'Status alterado.');
-        } else {
-            Flash::set('erro', 'Ação inválida.');
+        if ($id <= 0) {
+            Flash::set('erro', 'ID inválido.');
+            redirect('clientes.php');
+        }
+
+        try {
+            if ($acao === 'excluir') {
+                // Confirmar que o cliente pertence à empresa (segurança multi-tenant)
+                $stmtOwn = $db->prepare('SELECT id FROM clientes WHERE id = ? AND empresa_id = ?');
+                $stmtOwn->execute([$id, $empresaId]);
+                if (!$stmtOwn->fetch()) {
+                    Flash::set('erro', 'Cliente não encontrado.');
+                    redirect('clientes.php');
+                }
+
+                // Checagem prévia de FK: contas_receber e cliente_servicos (RESTRICT)
+                $stmtCR = $db->prepare('SELECT COUNT(*) AS qtd FROM contas_receber WHERE cliente_id = ?');
+                $stmtCR->execute([$id]);
+                $qtdContas = (int)$stmtCR->fetch()['qtd'];
+
+                $stmtCS = $db->prepare('SELECT COUNT(*) AS qtd FROM cliente_servicos WHERE cliente_id = ?');
+                $stmtCS->execute([$id]);
+                $qtdServicos = (int)$stmtCS->fetch()['qtd'];
+
+                if ($qtdContas > 0 || $qtdServicos > 0) {
+                    $partes = [];
+                    if ($qtdContas > 0)    $partes[] = $qtdContas . ' conta(s) a receber';
+                    if ($qtdServicos > 0)  $partes[] = $qtdServicos . ' serviço(s) vinculado(s)';
+                    Flash::set('erro', 'Não é possível excluir: cliente possui ' . implode(' e ', $partes) . '. Exclua ou transfira antes.');
+                    redirect('clientes.php');
+                }
+
+                // E-mails (cliente_emails_nfse, cliente_emails_boleto) são ON DELETE CASCADE
+                $stmt = $db->prepare('DELETE FROM clientes WHERE id = ? AND empresa_id = ?');
+                $stmt->execute([$id, $empresaId]);
+                Flash::set('sucesso', 'Cliente excluído permanentemente.');
+            } elseif ($acao === 'toggle' && $id > 0) {
+                $stmt = $db->prepare('UPDATE clientes SET ativo = NOT ativo WHERE id = ? AND empresa_id = ?');
+                $stmt->execute([$id, $empresaId]);
+                Flash::set('sucesso', 'Status alterado.');
+            } else {
+                Flash::set('erro', 'Ação inválida.');
+            }
+        } catch (PDOException $e) {
+            error_log('[Clientes] Erro: ' . $e->getMessage());
+            Flash::set('erro', 'Erro ao executar ação.');
         }
 
         redirect('clientes.php');

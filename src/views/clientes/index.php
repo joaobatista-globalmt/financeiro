@@ -18,12 +18,13 @@
             <th>Documentos</th>
             <th class="text-right">Contas</th>
             <th>Status</th>
+            <th>Maps</th>
             <th>Ações</th>
         </tr>
     </thead>
     <tbody>
         <?php if (empty($clientes)): ?>
-            <tr><td colspan="10" class="muted center">Nenhum cliente cadastrado.</td></tr>
+            <tr><td colspan="11" class="muted center">Nenhum cliente cadastrado.</td></tr>
         <?php else: foreach ($clientes as $c): ?>
             <tr>
                 <td><strong><?= htmlspecialchars($c['razao_social']) ?></strong></td>
@@ -63,9 +64,28 @@
                         <?= $c['ativo'] ? 'Ativo' : 'Inativo' ?>
                     </span>
                 </td>
+                <td>
+                    <?php if (!empty($c['endereco_maps'])): ?>
+                        <a href="<?= htmlspecialchars($c['endereco_maps']) ?>" target="_blank" rel="noopener noreferrer" title="<?= htmlspecialchars($c['endereco_maps']) ?>" style="text-decoration: none; color: #1e40af; font-weight: 500;">Maps</a>
+                    <?php else: ?>
+                        <span style="color: #999;">-</span>
+                    <?php endif; ?>
+                </td>
                 <td class="actions">
                     <?php if (Permissao::tem('gerenciar_cadastros')): ?>
                         <a href="cliente_form.php?id=<?= (int)$c['id'] ?>" class="btn btn-sm">Editar</a>
+                    <?php endif; ?>
+                    <?php if (Permissao::tem('excluir')): ?>
+                        <form method="post" action="cliente_acao.php" style="display:inline" onsubmit="return confirm('Ativar/Inativar o cliente &quot;<?= htmlspecialchars(addslashes($c['razao_social']), ENT_QUOTES) ?>&quot;?')">
+                            <input type="hidden" name="id" value="<?= (int)$c['id'] ?>">
+                            <input type="hidden" name="acao" value="toggle">
+                            <button type="submit" class="btn btn-sm"><?= $c['ativo'] ? 'Desativar' : 'Ativar' ?></button>
+                        </form>
+                        <form method="post" action="cliente_acao.php" style="display:inline" onsubmit="return confirm('ATENÇÃO: Excluir PERMANENTEMENTE o cliente &quot;<?= htmlspecialchars(addslashes($c['razao_social']), ENT_QUOTES) ?>&quot;?\n\nEsta ação NÃO pode ser desfeita. Se houver contas a receber ou serviços vinculados, a exclusão será bloqueada.')">
+                            <input type="hidden" name="id" value="<?= (int)$c['id'] ?>">
+                            <input type="hidden" name="acao" value="excluir">
+                            <button type="submit" class="btn btn-sm btn-danger">Excluir</button>
+                        </form>
                     <?php endif; ?>
                 </td>
             </tr>

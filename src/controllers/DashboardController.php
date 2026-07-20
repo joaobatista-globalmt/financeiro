@@ -130,4 +130,66 @@ final class DashboardController
             'fluxo30d'      => $fluxo30d,
         ]);
     }
+
+
+    /**
+     * Drill-down de movimentacoes de uma conta bancaria especifica.
+     * GET dashboard_drilldown_conta.php?conta_id=N
+     * Retorna JSON com: titulo, saldo, qtd, contas[]
+     */
+    public function drilldownContaBanco(): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+        Auth::require();
+        $contaId = (int)($_GET['conta_id'] ?? 0);
+        if ($contaId <= 0) {
+            echo json_encode(['erro' => 'conta_id obrigatorio']);
+            return;
+        }
+        $empresaId = Auth::user()['empresa_id'];
+        $db = Database::getConnection();
+
+        // Header da conta (com filtro de empresa - seguranca)
+        $stmt = $db->prepare('SELECT descricao, banco, tipo FROM contas_bancarias WHERE id = ? AND empresa_id = ?');
+        $stmt->execute([$contaId, $empresaId]);
+        $conta = $stmt->fetch();
+        if (!$conta) {
+            echo json_encode(['erro' => 'Conta nao encontrada ou sem permissao']);
+            return;
+        }
+
+        // Movimentacoes (ultimas 200, mais recentes primeiro)
+        $stmt = $db->prepare('
+            SELECT m.data_movimento, m.tipo, m.origem, m.valor, m.descricao
+            FROM movimentacoes_bancarias m
+            WHERE m.conta_bancaria_id = ?
+            ORDER BY m.data_movimento DESC, m.id DESC
+            LIMIT 200
+        ');
+        $stmt->execute([$contaId]);
+        $movs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Saldo atual (mesma formula do card: saldo_inicial + soma das movs)
+        $stmt = $db->prepare('
+            SELECT
+                cb.saldo_inicial,
+                (SELECT COALESCE(SUM(CASE WHEN m.tipo = "entrada" THEN m.valor ELSE -m.valor END), 0)
+                 FROM movimentacoes_bancarias m
+                 WHERE m.conta_bancaria_id = cb.id) AS saldo_movs
+            FROM contas_bancarias cb
+            WHERE cb.id = ? AND cb.empresa_id = ?
+        ');
+        $stmt->execute([$contaId, $empresaId]);
+        $s = $stmt->fetch();
+        $saldo = (float)($s['saldo_inicial'] ?? 0) + (float)($s['saldo_movs'] ?? 0);
+
+        $tituloConta = $conta['descricao'] . (empty($conta['banco']) ? '' : ' (' . $conta['banco'] . ')');
+
+        echo json_encode([
+            'titulo' => $tituloConta,
+            'saldo'  => $saldo,
+            'qtd'    => count($movs),
+            'contas' => $movs,
+        ], JSON_UNESCAPED_UNICODE);
+    }
 }

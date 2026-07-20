@@ -14,19 +14,19 @@
 </div>
 
 <div class="cards-grid">
-    <div class="card card-danger">
+    <div class="card card-danger" onclick="abrirDrillDown('atrasadas', 'Atrasadas')" style="cursor:pointer;" title="Clique para ver os lançamentos">
         <div class="card-title">Atrasadas</div>
         <div class="card-value">R$ <?= number_format((float)($resumo['atrasadas'] ?? 0), 2, ',', '.') ?></div>
     </div>
-    <div class="card card-warning">
+    <div class="card card-warning" onclick="abrirDrillDown('proximos7', 'Próx. 7 dias')" style="cursor:pointer;" title="Clique para ver os lançamentos">
         <div class="card-title">Próx. 7 dias</div>
         <div class="card-value">R$ <?= number_format((float)($resumo['proximos_7_dias'] ?? 0), 2, ',', '.') ?></div>
     </div>
-    <div class="card card-secondary">
+    <div class="card card-secondary" onclick="abrirDrillDown('pendente', 'Total Pendente')" style="cursor:pointer;" title="Clique para ver os lançamentos">
         <div class="card-title">Total Pendente</div>
         <div class="card-value">R$ <?= number_format((float)($resumo['total_pendente'] ?? 0), 2, ',', '.') ?></div>
     </div>
-    <div class="card card-success">
+    <div class="card card-success" onclick="abrirDrillDown('recebido_mes', 'Recebido no Mês')" style="cursor:pointer;" title="Clique para ver os lançamentos">
         <div class="card-title">Recebido no Mês</div>
         <div class="card-value">R$ <?= number_format((float)($resumo['recebido_mes'] ?? 0), 2, ',', '.') ?></div>
     </div>
@@ -138,8 +138,124 @@
                     <?php if (in_array($c['status'], ['pendente', 'aprovada'], true) && Permissao::tem('receber')): ?>
                         <a href="conta_receber_form.php?id=<?= (int)$c['id'] ?>#receber" class="btn btn-sm btn-success">Receber</a>
                     <?php endif; ?>
+                    <?php if (Permissao::tem('excluir') && !in_array($c['status'], ['recebida', 'cancelada'], true)): ?>
+                        <form method="post" action="conta_receber_acao.php" style="display:inline" onsubmit="return confirm('ATENÇÃO: Excluir PERMANENTEMENTE a conta a receber &quot;<?= htmlspecialchars(addslashes($c['descricao']), ENT_QUOTES) ?>&quot;?\n\nEsta ação NÃO pode ser desfeita.\n\nSe houver movimentação bancária ou se for conta-pai de parcelamento, a exclusão será bloqueada.');">
+                            <input type="hidden" name="id" value="<?= (int)$c['id'] ?>">
+                            <input type="hidden" name="acao" value="excluir">
+                            <button type="submit" class="btn btn-sm btn-danger">Excluir</button>
+                        </form>
+                    <?php endif; ?>
                 </td>
             </tr>
         <?php endforeach; endif; ?>
     </tbody>
 </table>
+
+<!-- Modal Drill-Down -->
+<div id="modal-drilldown" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; align-items:flex-start; justify-content:center; padding:40px 20px; box-sizing:border-box; overflow-y:auto;">
+    <div style="background:#fff; max-width:1100px; width:100%; border-radius:8px; box-shadow:0 4px 20px rgba(0,0,0,0.3); display:flex; flex-direction:column; max-height:calc(100vh - 80px);">
+        <div style="padding:16px 20px; border-bottom:1px solid #e5e7eb; display:flex; justify-content:space-between; align-items:center;">
+            <h2 id="modal-drilldown-titulo" style="margin:0; font-size:18px;">Drill-down</h2>
+            <button onclick="fecharDrillDown()" style="background:none; border:none; font-size:24px; cursor:pointer; color:#6b7280; line-height:1;">&times;</button>
+        </div>
+        <div id="modal-drilldown-body" style="padding:20px; overflow-y:auto; flex:1;">
+            Carregando...
+        </div>
+        <div id="modal-drilldown-footer" style="padding:12px 20px; border-top:1px solid #e5e7eb; display:flex; justify-content:space-between; align-items:center; background:#f9fafb; border-radius:0 0 8px 8px;">
+            <span id="modal-drilldown-info" style="color:#6b7280; font-size:13px;"></span>
+            <button onclick="fecharDrillDown()" class="btn">Fechar</button>
+        </div>
+    </div>
+</div>
+
+<style>
+    #modal-drilldown .tabela-drill { width:100%; border-collapse:collapse; font-size:13px; }
+    #modal-drilldown .tabela-drill th { background:#f5f5f5; padding:8px 10px; text-align:left; border-bottom:2px solid #d1d5db; font-weight:600; }
+    #modal-drilldown .tabela-drill td { padding:8px 10px; border-bottom:1px solid #e5e7eb; }
+    #modal-drilldown .tabela-drill td.valor { text-align:right; font-variant-numeric: tabular-nums; white-space:nowrap; }
+    #modal-drilldown .tabela-drill tr.total td { font-weight:bold; border-top:2px solid #333; background:#f9fafb; }
+    #modal-drilldown .badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600; color:#fff; }
+    #modal-drilldown .badge-warning  { background:#f59e0b; }
+    #modal-drilldown .badge-info     { background:#3b82f6; }
+    #modal-drilldown .badge-success  { background:#10b981; }
+    #modal-drilldown .badge-secondary { background:#6b7280; }
+    #modal-drilldown .muted { color:#6b7280; }
+    #modal-drilldown .text-center { text-align:center; }
+    #modal-drilldown .btn { padding:6px 14px; border:1px solid #d1d5db; background:#fff; border-radius:4px; cursor:pointer; }
+    #modal-drilldown .btn:hover { background:#f3f4f6; }
+</style>
+
+<script>
+function abrirDrillDown(card, titulo) {
+    document.getElementById('modal-drilldown-titulo').textContent = titulo + ' \u2014 carregando...';
+    document.getElementById('modal-drilldown-body').innerHTML = '<p class="muted text-center">Carregando lan\u00e7amentos...</p>';
+    document.getElementById('modal-drilldown-info').textContent = '';
+    document.getElementById('modal-drilldown').style.display = 'flex';
+
+    fetch('contas_receber.php?action=drilldown&card=' + encodeURIComponent(card))
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.erro) {
+                document.getElementById('modal-drilldown-body').innerHTML = '<p class="muted text-center">Erro: ' + data.erro + '</p>';
+                return;
+            }
+            renderDrillDown(data);
+        })
+        .catch(function(err) {
+            document.getElementById('modal-drilldown-body').innerHTML = '<p class="muted text-center">Erro de rede: ' + err.message + '</p>';
+        });
+}
+
+function renderDrillDown(data) {
+    document.getElementById('modal-drilldown-titulo').textContent = data.titulo;
+    var total = Number(data.total) || 0;
+    var qtd = data.qtd;
+    var html = '';
+    if (qtd === 0) {
+        html = '<p class="muted text-center">Nenhum lan\u00e7amento encontrado.</p>';
+    } else {
+        var statusBadge = { pendente: 'warning', aprovada: 'info', recebida: 'success', cancelada: 'secondary' };
+        var dataCols = { 'recebido_mes': 'data_recebimento' };
+        var dataCol = dataCols[data.card] || 'data_vencimento';
+        var valorCol = (data.card === 'recebido_mes') ? 'valor_recebido' : 'valor';
+        html += '<table class="tabela-drill"><thead><tr>';
+        html += '<th>Data</th><th>Descri\u00e7\u00e3o</th><th>Cliente</th><th>Categoria</th><th>N\u00ba Doc</th><th class="valor">Valor</th><th>Status</th>';
+        html += '</tr></thead><tbody>';
+        for (var i = 0; i < data.contas.length; i++) {
+            var c = data.contas[i];
+            var dataIso = c[dataCol] || c.data_vencimento || '';
+            var dataBr = dataIso ? dataIso.substring(8,10) + '/' + dataIso.substring(5,7) + '/' + dataIso.substring(0,4) : '-';
+            var valor = Number(c[valorCol] || 0);
+            var desc = (c.descricao || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            var cli = (c.cliente_nome || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            var cat = (c.categoria_nome || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            var ndoc = (c.numero_documento || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            var st = c.status || '';
+            html += '<tr>';
+            html += '<td>' + dataBr + '</td>';
+            html += '<td>' + desc + '</td>';
+            html += '<td>' + cli + '</td>';
+            html += '<td><span class="badge" style="background:' + c.categoria_cor + ';">' + cat + '</span></td>';
+            html += '<td>' + ndoc + '</td>';
+            html += '<td class="valor">R$ ' + valor.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}) + '</td>';
+            html += '<td><span class="badge badge-' + (statusBadge[st] || 'secondary') + '">' + st + '</span></td>';
+            html += '</tr>';
+        }
+        html += '<tr class="total"><td colspan="5" style="text-align:right;">TOTAL (' + qtd + ' lan\u00e7amento' + (qtd !== 1 ? 's' : '') + ')</td><td class="valor">R$ ' + total.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}) + '</td><td></td></tr>';
+        html += '</tbody></table>';
+    }
+    document.getElementById('modal-drilldown-body').innerHTML = html;
+    document.getElementById('modal-drilldown-info').textContent = qtd + ' lan\u00e7amento' + (qtd !== 1 ? 's' : '') + ' \u2022 Total: R$ ' + total.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+function fecharDrillDown() {
+    document.getElementById('modal-drilldown').style.display = 'none';
+}
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') fecharDrillDown();
+});
+document.getElementById('modal-drilldown').addEventListener('click', function(e) {
+    if (e.target === this) fecharDrillDown();
+});
+</script>

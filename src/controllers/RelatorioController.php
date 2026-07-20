@@ -1051,12 +1051,12 @@ final class RelatorioController
             if ($r['tipo'] === 'entrada') {
                 $saldoAcumulado += (float)$r['valor'];
                 $totalEntradas += (float)$r['valor'];
-                $valorStr = '+ R$ ' . number_format((float)$r['valor'], 2, ',', '.');
+                $valorStr = '+ ' . number_format((float)$r['valor'], 2, ',', '.');
                 $tipoBadge = '↗ Entrada';
             } else {
                 $saldoAcumulado -= (float)$r['valor'];
                 $totalSaidas += (float)$r['valor'];
-                $valorStr = '- R$ ' . number_format((float)$r['valor'], 2, ',', '.');
+                $valorStr = '- ' . number_format((float)$r['valor'], 2, ',', '.');
                 $tipoBadge = '↘ Saída';
             }
 
@@ -1161,6 +1161,8 @@ final class RelatorioController
             th { background: #f5f5f5; font-weight: bold; }
             tr:nth-child(even) { background: #fafafa; }
             .text-right { text-align: right; }
+            th.valor, td.valor { text-align: right; font-variant-numeric: tabular-nums; }
+            .resumo td:not(.label) { text-align: right; font-variant-numeric: tabular-nums; }
         </style></head><body>';
 
         $html .= '<h1>' . htmlspecialchars($dados['titulo']) . '</h1>';
@@ -1213,7 +1215,8 @@ final class RelatorioController
 
         $html .= '<table><thead><tr>';
         foreach ($dados['headers'] as $h) {
-            $html .= '<th>' . htmlspecialchars($h) . '</th>';
+            $clsTh = in_array($h, ['Valor', 'Saldo']) ? ' class="valor"' : '';
+            $html .= '<th' . $clsTh . '>' . htmlspecialchars($h) . '</th>';
         }
         $html .= '</tr></thead><tbody>';
 
@@ -1222,8 +1225,9 @@ final class RelatorioController
         } else {
             foreach ($dados['rows'] as $row) {
                 $html .= '<tr>';
-                foreach ($row as $cell) {
-                    $html .= '<td>' . htmlspecialchars((string)$cell) . '</td>';
+                foreach ($row as $i => $cell) {
+                    $clsTd = in_array($dados['headers'][$i], ['Valor', 'Saldo']) ? ' class="valor"' : '';
+                    $html .= '<td' . $clsTd . '>' . htmlspecialchars((string)$cell) . '</td>';
                 }
                 $html .= '</tr>';
             }
@@ -1236,7 +1240,7 @@ final class RelatorioController
 
         $tmpPdf = tempnam(sys_get_temp_dir(), 'rel_') . '.pdf';
         $cmd = sprintf(
-            'wkhtmltopdf --quiet --orientation Landscape --margin-top 10mm --margin-bottom 10mm %s %s 2>&1',
+            'wkhtmltopdf --quiet --orientation Portrait --margin-top 10mm --margin-bottom 10mm %s %s 2>&1',
             escapeshellarg($tmpHtml),
             escapeshellarg($tmpPdf)
         );

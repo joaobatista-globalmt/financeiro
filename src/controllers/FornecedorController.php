@@ -1,6 +1,9 @@
 <?php
 /**
  * FornecedorController - CRUD de fornecedores
+ *
+ * Modificação 14/07/2026: adicionado ação 'excluir' (DELETE físico) com
+ * checagem prévia de FK em contas_pagar. Mantidas ações 'ativar'/'desativar'.
  */
 
 declare(strict_types=1);
@@ -181,6 +184,31 @@ final class FornecedorController
                 $stmt = $db->prepare('UPDATE fornecedores SET ativo = 0 WHERE id = ? AND empresa_id = ?');
                 $stmt->execute([$id, $empresaId]);
                 Flash::set('sucesso', 'Fornecedor desativado.');
+            } elseif ($acao === 'excluir') {
+                // Checagem prévia de FK: contas_pagar (RESTRICT) - impede exclusão se houver
+                $stmtChk = $db->prepare('SELECT COUNT(*) AS qtd FROM contas_pagar WHERE fornecedor_id = ?');
+                $stmtChk->execute([$id]);
+                $qtdContas = (int)$stmtChk->fetch()['qtd'];
+
+                if ($qtdContas > 0) {
+                    Flash::set('erro', sprintf(
+                        'Não é possível excluir: fornecedor possui %d conta(s) a pagar vinculada(s). Exclua ou transfira as contas primeiro.',
+                        $qtdContas
+                    ));
+                    redirect('fornecedores.php');
+                }
+
+                // Confirmar que o fornecedor pertence à empresa (segurança multi-tenant)
+                $stmtOwn = $db->prepare('SELECT id FROM fornecedores WHERE id = ? AND empresa_id = ?');
+                $stmtOwn->execute([$id, $empresaId]);
+                if (!$stmtOwn->fetch()) {
+                    Flash::set('erro', 'Fornecedor não encontrado.');
+                    redirect('fornecedores.php');
+                }
+
+                $stmt = $db->prepare('DELETE FROM fornecedores WHERE id = ? AND empresa_id = ?');
+                $stmt->execute([$id, $empresaId]);
+                Flash::set('sucesso', 'Fornecedor excluído permanentemente.');
             } else {
                 Flash::set('erro', 'Ação inválida.');
             }

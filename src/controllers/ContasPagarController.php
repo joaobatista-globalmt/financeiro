@@ -87,6 +87,89 @@ final class ContasPagarController
         ]);
     }
 
+    /**
+     * Drill-down: retorna os lancamentos que compoem o valor de um card especifico.
+     * GET: ?action=drilldown&card=atrasadas|proximos7|pendente|pago_mes
+     * Retorna JSON.
+     */
+    public function drillDown(): void
+    {
+        Auth::require();
+        header('Content-Type: application/json; charset=utf-8');
+
+        $empresaId  = Auth::user()['empresa_id'];
+        $card       = $_GET['card'] ?? '';
+        $hoje       = date('Y-m-d');
+        $hojeMais7  = date('Y-m-d', strtotime('+7 days'));
+        $primeiroDia = date('Y-m-01');
+        $ultimoDia   = date('Y-m-t');
+
+        $titulos = [
+            'atrasadas'  => 'Atrasadas',
+            'proximos7'  => 'Pr\u00f3x. 7 dias',
+            'pendente'   => 'Total Pendente',
+            'pago_mes'   => 'Pago no M\u00eas',
+        ];
+
+        if (!isset($titulos[$card])) {
+            http_response_code(400);
+            echo json_encode(['erro' => 'card invalido']);
+            return;
+        }
+
+        $where  = ' AND cp.empresa_id = ?';
+        $params = [$empresaId];
+
+        switch ($card) {
+            case 'atrasadas':
+                $where   .= ' AND cp.status IN ("pendente","aprovada") AND cp.data_vencimento < ?';
+                $params[] = $hoje;
+                $campoTotal = 'valor';
+                break;
+            case 'proximos7':
+                $where   .= ' AND cp.status IN ("pendente","aprovada") AND cp.data_vencimento BETWEEN ? AND ?';
+                $params[] = $hoje;
+                $params[] = $hojeMais7;
+                $campoTotal = 'valor';
+                break;
+            case 'pendente':
+                $where   .= ' AND cp.status IN ("pendente","aprovada")';
+                $campoTotal = 'valor';
+                break;
+            case 'pago_mes':
+                $where   .= ' AND cp.status = "paga" AND cp.data_pagamento BETWEEN ? AND ?';
+                $params[] = $primeiroDia;
+                $params[] = $ultimoDia;
+                $campoTotal = 'valor_pago';
+                break;
+        }
+
+        $sql = "SELECT cp.id, cp.data_vencimento, cp.data_pagamento, cp.descricao, cp.valor, cp.valor_pago, cp.status, cp.parcela_atual, cp.parcelas, cp.numero_documento, cp.forma_pagamento,
+                       f.razao_social AS fornecedor_nome,
+                       cat.nome AS categoria_nome, cat.cor AS categoria_cor
+                FROM contas_pagar cp
+                JOIN fornecedores f ON f.id = cp.fornecedor_id
+                JOIN categorias cat ON cat.id = cp.categoria_id
+                WHERE 1=1 $where
+                ORDER BY cp.data_vencimento ASC";
+        $stmt = Database::getConnection()->prepare($sql);
+        $stmt->execute($params);
+        $contas = $stmt->fetchAll();
+
+        $total = 0.0;
+        foreach ($contas as $cc) {
+            $total += (float)($cc[$campoTotal] ?? 0);
+        }
+
+        echo json_encode([
+            'card'    => $card,
+            'titulo'  => $titulos[$card],
+            'total'   => $total,
+            'qtd'     => count($contas),
+            'contas'  => $contas,
+        ], JSON_UNESCAPED_UNICODE);
+    }
+
     public function form(): void
     {
         Auth::require();

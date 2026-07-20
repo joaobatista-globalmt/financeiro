@@ -40,7 +40,10 @@ $actionForm = 'fornecedor_salvar.php' . ($returnTo ? '?return=' . rawurlencode($
     <div class="row">
         <div class="form-group col-6">
             <label>CNPJ</label>
-            <input type="text" name="cnpj" maxlength="20"
+            <input type="text" id="cnpj" name="cnpj" maxlength="18"
+                   inputmode="numeric"
+                   placeholder="00.000.000/0000-00"
+                   oninput="mascaraCnpj(this)"
                    value="<?= htmlspecialchars($fornecedor['cnpj'] ?? '') ?>">
         </div>
         <div class="form-group col-6">
@@ -135,4 +138,104 @@ $actionForm = 'fornecedor_salvar.php' . ($returnTo ? '?return=' . rawurlencode($
         <button type="submit" class="btn btn-primary">Salvar</button>
         <a href="fornecedores.php" class="btn">Cancelar</a>
     </div>
+<script>
+(function(){
+  const inputCnpj = document.getElementById('cnpj');
+  if (!inputCnpj) return;
+
+  function setStatus(msg, cor){
+    let s = document.getElementById('cnpj-status');
+    if (!s){
+      s = document.createElement('small');
+      s.id = 'cnpj-status';
+      s.style.marginLeft = '8px';
+      s.style.fontWeight = '600';
+      inputCnpj.parentNode.appendChild(s);
+    }
+    s.textContent = msg;
+    s.style.color = cor || '#666';
+  }
+
+  function setIfEmpty(name, val){
+    if (val === undefined || val === null || val === '') return;
+    const el = document.querySelector('[name="'+name+'"]');
+    if (el && !el.value.trim()) el.value = val;
+  }
+
+  function formatCep(c){
+    if (!c) return '';
+    c = String(c).replace(/\D/g,'').slice(0,8);
+    return c.replace(/^(\d{5})(\d)/, '$1-$2');
+  }
+
+  function formatPhone(p){
+    if (!p) return '';
+    p = String(p).replace(/\D/g,'').slice(0,11);
+    if (p.length === 11) return p.replace(/^(\d{2})(\d{5})(\d)/, '($1) $2-$3');
+    if (p.length === 10) return p.replace(/^(\d{2})(\d{4})(\d)/, '($1) $2-$3');
+    return p;
+  }
+
+  window.mascaraCnpj = function(el){
+    let v = el.value.replace(/\D/g,'').slice(0,14);
+    v = v.replace(/^(\d{2})(\d)/, '$1.$2')
+         .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
+         .replace(/\.(\d{3})(\d)/, '.$1/$2')
+         .replace(/(\d{4})(\d)/, '$1-$2');
+    el.value = v;
+  };
+
+  // BrasilAPI: situacao_cadastral vem como CODIGO numerico da Receita Federal
+  const SITUACAO = {1:'NULA', 2:'ATIVA', 3:'SUSPENSA', 4:'INAPTA', 8:'BAIXADA'};
+
+  async function buscarCnpj(){
+    const cnpj = inputCnpj.value.replace(/\D/g,'');
+    if (cnpj.length !== 14){
+      setStatus('');
+      return;
+    }
+    if (!window.confirm('Buscar dados do CNPJ na Receita Federal (BrasilAPI)?')){
+      return;
+    }
+    setStatus('\u{1F504} Consultando BrasilAPI...', '#1e40af');
+    try {
+      const r = await fetch('https://brasilapi.com.br/api/cnpj/v1/' + cnpj);
+      if (r.status === 404){
+        setStatus('\u274C CNPJ n\u00e3o encontrado na Receita.', '#dc2626');
+        return;
+      }
+      if (!r.ok){
+        setStatus('\u274C Erro ' + r.status + ' ao consultar.', '#dc2626');
+        return;
+      }
+      const d = await r.json();
+      console.log('[BrasilAPI]', d);
+
+      setIfEmpty('razao_social',  d.razao_social || '');
+      setIfEmpty('nome_fantasia', d.nome_fantasia || d.razao_social || '');
+      setIfEmpty('cep',           formatCep(d.cep));
+      const end = [d.logradouro, d.numero].filter(Boolean).join(', ');
+      setIfEmpty('endereco',      end);
+      setIfEmpty('cidade',        d.municipio || '');
+      setIfEmpty('uf',            (d.uf || '').toUpperCase());
+      setIfEmpty('telefone',      formatPhone(d.ddd_telefone_1));
+      setIfEmpty('email',         d.email || '');
+
+      setStatus('\u2705 Dados preenchidos: ' + (d.razao_social || ''), '#15803d');
+
+      // BrasilAPI retorna situacao_cadastral como NUMERO (codigo da Receita Federal).
+      // Tabela: 1=NULA, 2=ATIVA, 3=SUSPENSA, 4=INAPTA, 8=BAIXADA
+      const sitCod = d.situacao_cadastral;
+      const sitDesc = SITUACAO[sitCod] || ('CODIGO ' + sitCod);
+      if (sitCod !== 2 && sitCod !== undefined && sitCod !== null){
+        window.alert('\u26A0\uFE0F ATENCAO: CNPJ com situacao cadastral = ' + sitDesc + ' (codigo ' + sitCod + ')\n\nA empresa pode estar impedida de emitir notas ou operar.');
+      }
+    } catch (e){
+      setStatus('\u274C Falha na consulta: ' + e.message, '#dc2626');
+    }
+  }
+
+  inputCnpj.addEventListener('blur', buscarCnpj);
+})();
+</script>
 </form>

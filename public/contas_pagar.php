@@ -1,3 +1,9 @@
 <?php
 require __DIR__ . '/bootstrap.php';
-(new ContasPagarController)->index();
+$action = $_GET['action'] ?? 'index';
+$controller = new ContasPagarController();
+if ($action === 'drilldown') {
+    $controller->drillDown();
+} else {
+    $controller->index();
+}

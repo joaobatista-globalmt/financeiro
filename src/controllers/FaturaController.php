@@ -608,24 +608,78 @@ final class FaturaController
             exit;
         }
 
-        $stmt = $db->prepare("SELECT status FROM faturas WHERE id = ? AND empresa_id = ?");
-        $stmt->execute([$id, $empresaId]);
-        $fatura = $stmt->fetch(PDO::FETCH_ASSOC);
-        if (!$fatura) {
-            $_SESSION['flash_erro'] = 'Fatura nao encontrada.';
-            header('Location: faturas.php');
-            exit;
-        }
-        if ($fatura['status'] === 'paga' || $fatura['status'] === 'parcial') {
-            $_SESSION['flash_erro'] = 'Fatura com pagamento nao pode ser excluida. Cancele primeiro.';
-            header('Location: fatura_acao.php?acao=show&id=' . $id);
-            exit;
+        try {
+            $db->beginTransaction();
+
+            // 1. Carrega a fatura (multi-tenant safe)
+            $stmt = $db->prepare("SELECT id, status FROM faturas WHERE id = ? AND empresa_id = ?");
+            $stmt->execute([$id, $empresaId]);
+            $fatura = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$fatura) {
+                $db->rollBack();
+                $_SESSION['flash_erro'] = 'Fatura nao encontrada.';
+                header('Location: faturas.php');
+                exit;
+            }
+
+            // 2. Bloqueia se fatura ja paga/parcial (mantido)
+            if ($fatura['status'] === 'paga' || $fatura['status'] === 'parcial') {
+                $db->rollBack();
+                $_SESSION['flash_erro'] = 'Fatura com pagamento nao pode ser excluida. Cancele primeiro.';
+                header('Location: fatura_acao.php?acao=show&id=' . $id);
+                exit;
+            }
+
+            // 3. Verifica se tem CR gerada (numero_documento='FAT-{id}')
+            $numeroDoc = 'FAT-' . $id;
+            $stmtCR = $db->prepare("SELECT id, status FROM contas_receber WHERE numero_documento = ? AND empresa_id = ?");
+            $stmtCR->execute([$numeroDoc, $empresaId]);
+            $cr = $stmtCR->fetch(PDO::FETCH_ASSOC);
+
+            $crDeletadaId = null;
+            $crStatus = null;
+            if ($cr) {
+                $crDeletadaId = (int)$cr['id'];
+                $crStatus = $cr['status'];
+
+                // 4. BLOQUEIA se CR ja foi recebida (paga) - preserva historico financeiro
+                if ($crStatus === 'recebida') {
+                    $db->rollBack();
+                    $_SESSION['flash_erro'] = sprintf(
+                        'Fatura #%d possui CR #%d ja RECEBIDA (paga). Cancele ou estorne a CR antes de excluir a fatura, para preservar o historico financeiro.',
+                        $id, $crDeletadaId
+                    );
+                    header('Location: fatura_acao.php?acao=show&id=' . $id);
+                    exit;
+                }
+
+                // 5. Deleta a CR (CASCADE remove parcelas + faturas_mensais vira NULL via SET NULL)
+                $stmtDelCR = $db->prepare("DELETE FROM contas_receber WHERE id = ? AND empresa_id = ?");
+                $stmtDelCR->execute([$crDeletadaId, $empresaId]);
+            }
+
+            // 6. Deleta a fatura (CASCADE remove fatura_itens)
+            $stmtDel = $db->prepare("DELETE FROM faturas WHERE id = ? AND empresa_id = ?");
+            $stmtDel->execute([$id, $empresaId]);
+
+            $db->commit();
+
+            // 7. Mensagem de sucesso informa o que foi removido
+            if ($crDeletadaId !== null) {
+                $_SESSION['flash_sucesso'] = sprintf(
+                    'Fatura #%d e CR #%d (status: %s) excluidas com sucesso.',
+                    $id, $crDeletadaId, $crStatus
+                );
+            } else {
+                $_SESSION['flash_sucesso'] = 'Fatura #' . $id . ' excluida com sucesso.';
+            }
+        } catch (Throwable $e) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
+            $_SESSION['flash_erro'] = 'Erro ao excluir fatura: ' . $e->getMessage();
         }
 
-        $stmt = $db->prepare("DELETE FROM faturas WHERE id = ? AND empresa_id = ?");
-        $stmt->execute([$id, $empresaId]);
-
-        $_SESSION['flash_sucesso'] = 'Fatura #' . $id . ' excluida.';
         header('Location: faturas.php');
         exit;
     }

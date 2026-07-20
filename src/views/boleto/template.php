@@ -63,7 +63,7 @@ table.ficha .valor { font-size: 11px; }
     <td class="label w-15">Nosso Numero<br><span class="valor"><?= $boleto['nosso_numero'] ?></span></td>
 </tr></table>
 <table class="ficha"><tr>
-    <td class="label w-50">Sacado<br><span style="font-weight:normal;font-size:10px;"><?= htmlspecialchars($boleto['cliente_nome']) ?><br>CPF/CNPJ: <?= htmlspecialchars($boleto['cliente_doc'] ?? 'N/A') ?><br><?= htmlspecialchars($boleto['cliente_endereco'] ?? '') ?>, <?= htmlspecialchars($boleto['cliente_numero'] ?? '') ?> - <?= htmlspecialchars($boleto['cliente_bairro'] ?? '') ?><br><?= htmlspecialchars($boleto['cliente_cidade'] ?? '') ?> / <?= htmlspecialchars($boleto['cliente_uf'] ?? '') ?> - CEP: <?= htmlspecialchars($boleto['cliente_cep'] ?? '') ?></span></td>
+    <td class="label w-50">Sacado<br><span style="font-weight:normal;font-size:10px;"><?= htmlspecialchars($boleto['cliente_nome']) ?><br>CPF/CNPJ: <?= htmlspecialchars($boleto['cliente_doc'] ?? 'N/A') ?><br><?= htmlspecialchars($boleto['cliente_endereco'] ?? '') ?><br><?= htmlspecialchars($boleto['cliente_cidade'] ?? '') ?> / <?= htmlspecialchars($boleto['cliente_uf'] ?? '') ?> - CEP: <?= htmlspecialchars($boleto['cliente_cep'] ?? '') ?></span></td>
     <td class="w-50" style="padding:0;"><table style="width:100%;"><tr>
         <td class="label">Carteira<br><span class="valor">17</span></td>
         <td class="label">Especie<br><span class="valor">R$</span></td>

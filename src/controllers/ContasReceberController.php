@@ -429,8 +429,8 @@ final class ContasReceberController
         $stmt = $db->prepare('
             SELECT cr.*,
                    c.razao_social AS cliente_nome, c.cpf_cnpj AS cliente_doc,
-                   c.endereco AS cliente_endereco, c.numero AS cliente_numero,
-                   c.bairro AS cliente_bairro, c.cidade AS cliente_cidade,
+                   c.endereco AS cliente_endereco,
+                   c.cidade AS cliente_cidade,
                    c.uf AS cliente_uf, c.cep AS cliente_cep,
                    e.razao_social AS empresa_nome, e.cnpj AS empresa_cnpj,
                    cb.banco AS banco_nome, cb.agencia, cb.numero_conta, cb.digito,
@@ -523,11 +523,65 @@ final class ContasReceberController
         if ($valor <= 0) return 'zero reais';
         $inteiro = (int)$valor;
         $centavos = (int)round(($valor - $inteiro) * 100);
-        $fmt = new NumberFormatter('pt_BR', NumberFormatter::SPELLOUT);
+
         $ext = '';
-        if ($inteiro > 0) $ext .= $fmt->format($inteiro) . ' reais';
-        if ($centavos > 0) { if ($ext) $ext .= ' e '; $ext .= $fmt->format($centavos) . ' centavos'; }
+        if ($inteiro > 0) {
+            $ext .= $this->numeroParaExtenso($inteiro) . ($inteiro == 1 ? ' real' : ' reais');
+        }
+        if ($centavos > 0) {
+            if ($ext) $ext .= ' e ';
+            $ext .= $this->numeroParaExtenso($centavos) . ($centavos == 1 ? ' centavo' : ' centavos');
+        }
         return $ext;
+    }
+
+    /**
+     * Converte numero inteiro (0-999999999) para extenso em portugues.
+     * Implementacao PHP pura - nao depende da extensao intl.
+     */
+    private function numeroParaExtenso(int $n): string
+    {
+        if ($n == 0) return 'zero';
+        if ($n == 100) return 'cem';
+
+        $unidades = ['', 'um', 'dois', 'tres', 'quatro', 'cinco', 'seis', 'sete', 'oito', 'nove', 'dez',
+                     'onze', 'doze', 'treze', 'quatorze', 'quinze', 'dezesseis', 'dezessete', 'dezoito', 'dezenove'];
+        $dezenas  = ['', '', 'vinte', 'trinta', 'quarenta', 'cinquenta', 'sessenta', 'setenta', 'oitenta', 'noventa'];
+        $centenas = ['', 'cento', 'duzentos', 'trezentos', 'quatrocentos', 'quinhentos', 'seiscentos', 'setecentos', 'oitocentos', 'novecentos'];
+
+        $partes = [];
+        if ($n >= 1000000) {
+            $mi = (int)($n / 1000000);
+            $partes[] = $this->numeroParaExtenso($mi) . ($mi == 1 ? ' milhao' : ' milhoes');
+            $n %= 1000000;
+        }
+        if ($n >= 1000) {
+            $mil = (int)($n / 1000);
+            if ($mil == 1) {
+                $partes[] = 'mil';
+            } else {
+                $partes[] = $this->numeroParaExtenso($mil) . ' mil';
+            }
+            $n %= 1000;
+        }
+        if ($n >= 100) {
+            $c = (int)($n / 100);
+            $partes[] = $centenas[$c];
+            $n %= 100;
+        }
+        if ($n >= 20) {
+            $d = (int)($n / 10);
+            $partes[] = $dezenas[$d];
+            $n %= 10;
+        } elseif ($n >= 10) {
+            $partes[] = $unidades[$n];
+            $n = 0;
+        }
+        if ($n > 0 && $n < 10) {
+            $partes[] = $unidades[$n];
+        }
+
+        return implode(' e ', array_filter($partes));
     }
 
     public function acao(): void

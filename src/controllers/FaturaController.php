@@ -347,9 +347,21 @@ final class FaturaController
         $stmtI->execute([$id]);
         $itens = $stmtI->fetchAll(PDO::FETCH_ASSOC);
 
+        // Flag: pode gerar conta a receber? (fatura aberta/vencida + ainda nao gerada)
+        $podeGerarReceber = in_array($fatura['status'], ['aberta', 'vencida'], true);
+        if ($podeGerarReceber) {
+            $stmtCR = $db->prepare("SELECT id, status FROM contas_receber WHERE numero_documento = ? AND empresa_id = ?");
+            $stmtCR->execute(['FAT-' . $id, $empresaId]);
+            $contaExistente = $stmtCR->fetch(PDO::FETCH_ASSOC);
+            if ($contaExistente) {
+                $podeGerarReceber = false;
+            }
+        }
+
         layout('Fatura #' . $id, 'faturas/show.php', [
-            'fatura' => $fatura,
-            'itens'  => $itens,
+            'fatura'           => $fatura,
+            'itens'            => $itens,
+            'podeGerarReceber' => $podeGerarReceber,
         ]);
     }
 
@@ -497,6 +509,134 @@ final class FaturaController
     /**
      * Roteador: acao vem do ?acao= ou $_POST['acao'].
      */
+    /**
+     * Gera 1 conta a receber a partir da fatura (idempotente).
+     * POST fatura_acao.php?acao=gerar_receber
+     * Body: id (da fatura)
+     *
+     * Regras:
+     * - Fatura precisa estar em status 'aberta' ou 'vencida'
+     * - Nao duplica (checa por numero_documento='FAT-{id}')
+     * - Auto-pick categoria ativa (1a da empresa) como categoria_id
+     * - Herda conta_bancaria_id do 1o item da fatura
+     */
+    public function gerarReceber(): void
+    {
+        Auth::require();
+        Permissao::requer('criar', 'faturas.php');
+        $empresaId = Auth::user()['empresa_id'];
+        $usuarioId = Auth::user()['id'];
+        $db = Database::getConnection();
+
+        $faturaId = (int)($_POST['id'] ?? 0);
+        if ($faturaId <= 0) {
+            $_SESSION['flash_erro'] = 'ID invalido.';
+            header('Location: faturas.php');
+            exit;
+        }
+
+        // Carrega a fatura
+        $stmt = $db->prepare("
+            SELECT f.*, c.razao_social AS cliente_nome
+            FROM faturas f
+            JOIN clientes c ON c.id = f.cliente_id
+            WHERE f.id = ? AND f.empresa_id = ?
+        ");
+        $stmt->execute([$faturaId, $empresaId]);
+        $fatura = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$fatura) {
+            $_SESSION['flash_erro'] = 'Fatura nao encontrada.';
+            header('Location: faturas.php');
+            exit;
+        }
+
+        // Valida status
+        if (!in_array($fatura['status'], ['aberta', 'vencida'], true)) {
+            $_SESSION['flash_erro'] = 'Fatura com status "' . $fatura['status'] . '" nao pode gerar conta a receber (apenas aberta/vencida).';
+            header('Location: fatura_acao.php?acao=show&id=' . $faturaId);
+            exit;
+        }
+
+        // Idempotencia: checa se ja existe conta_receber com numero_documento = FAT-{id}
+        $numeroDoc = 'FAT-' . $faturaId;
+        $stmtCheck = $db->prepare("SELECT id, status, data_criacao FROM contas_receber WHERE numero_documento = ? AND empresa_id = ?");
+        $stmtCheck->execute([$numeroDoc, $empresaId]);
+        $existente = $stmtCheck->fetch(PDO::FETCH_ASSOC);
+        if ($existente) {
+            $_SESSION['flash_erro'] = sprintf(
+                'Esta fatura ja gerou a conta a receber #%d (status: %s, criada em %s). Nao foi gerada duplicada.',
+                $existente['id'],
+                $existente['status'],
+                date('d/m/Y H:i', strtotime($existente['data_criacao']))
+            );
+            header('Location: fatura_acao.php?acao=show&id=' . $faturaId);
+            exit;
+        }
+
+        // Pega o 1o item pra herdar conta_bancaria_id
+        $stmtItem = $db->prepare("SELECT cliente_servico_id FROM fatura_itens WHERE fatura_id = ? LIMIT 1");
+        $stmtItem->execute([$faturaId]);
+        $item = $stmtItem->fetch(PDO::FETCH_ASSOC);
+        if (!$item) {
+            $_SESSION['flash_erro'] = 'Fatura sem itens. Adicione servicos antes de gerar a conta.';
+            header('Location: fatura_acao.php?acao=show&id=' . $faturaId);
+            exit;
+        }
+
+        // Pega o servico pra pegar conta_bancaria_id
+        $stmtServ = $db->prepare("SELECT conta_bancaria_id FROM cliente_servicos WHERE id = ?");
+        $stmtServ->execute([$item['cliente_servico_id']]);
+        $servico = $stmtServ->fetch(PDO::FETCH_ASSOC);
+        $contaBancariaId = !empty($servico['conta_bancaria_id']) ? (int)$servico['conta_bancaria_id'] : null;
+
+        // Auto-pick categoria ativa (1a da empresa)
+        $stmtCat = $db->prepare("SELECT id FROM categorias WHERE empresa_id = ? AND ativo = 1 ORDER BY id LIMIT 1");
+        $stmtCat->execute([$empresaId]);
+        $categoriaId = $stmtCat->fetchColumn();
+        if (!$categoriaId) {
+            $_SESSION['flash_erro'] = 'Nenhuma categoria cadastrada. Cadastre uma categoria de receita antes de gerar a conta.';
+            header('Location: fatura_acao.php?acao=show&id=' . $faturaId);
+            exit;
+        }
+
+        // Monta descricao
+        $descricao = sprintf('Fatura #%d - %s - %s',
+            $faturaId,
+            $fatura['mes_referencia'],
+            substr($fatura['cliente_nome'], 0, 80)
+        );
+
+        // Insere
+        $stmtIns = $db->prepare("
+            INSERT INTO contas_receber (
+                empresa_id, cliente_id, categoria_id, descricao, numero_documento,
+                valor, data_emissao, data_vencimento, forma_recebimento,
+                conta_bancaria_id, status, parcelas, parcela_atual,
+                observacoes, usuario_criacao_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pendente', 1, 1, ?, ?)
+        ");
+        $stmtIns->execute([
+            $empresaId,
+            (int)$fatura['cliente_id'],
+            (int)$categoriaId,
+            $descricao,
+            $numeroDoc,
+            (float)$fatura['valor_total'],
+            date('Y-m-d'),
+            $fatura['data_vencimento'],
+            'boleto',
+            $contaBancariaId,
+            'Gerado da fatura #' . $faturaId . ' em ' . date('d/m/Y H:i'),
+            (int)$usuarioId,
+        ]);
+        $contaId = (int)$db->lastInsertId();
+
+        $_SESSION['flash_sucesso'] = sprintf('Conta a receber #%d gerada a partir da fatura #%d.', $contaId, $faturaId);
+        header('Location: fatura_acao.php?acao=show&id=' . $faturaId);
+        exit;
+    }
+
+
     public function acao(): void
     {
         $acao = $_REQUEST['acao'] ?? 'index';
@@ -509,6 +649,7 @@ final class FaturaController
             case 'pagar':   $this->pagar();   break;
             case 'cancelar':$this->cancelar();break;
             case 'excluir': $this->excluir(); break;
+            case 'gerar_receber': $this->gerarReceber(); break;
             default:
                 header('Location: faturas.php');
                 exit;

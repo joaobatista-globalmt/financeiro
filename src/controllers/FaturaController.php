@@ -212,7 +212,7 @@ final class FaturaController
         $contaBancariaId = !empty($servico['conta_bancaria_id']) ? (int)$servico['conta_bancaria_id'] : null;
 
         // Auto-pick categoria ativa
-        $stmtCat = $db->prepare("SELECT id FROM categorias WHERE empresa_id = ? AND ativo = 1 ORDER BY id LIMIT 1");
+        $stmtCat = $db->prepare("SELECT id FROM categorias WHERE empresa_id = ? AND ativo = 1 AND (tipo = 'receita' OR tipo = 'ambos') ORDER BY id LIMIT 1");
         $stmtCat->execute([$empresaId]);
         $categoriaId = $stmtCat->fetchColumn();
         if (!$categoriaId) {
@@ -714,7 +714,7 @@ final class FaturaController
         $contaBancariaId = !empty($servico['conta_bancaria_id']) ? (int)$servico['conta_bancaria_id'] : null;
 
         // Auto-pick categoria ativa (1a da empresa)
-        $stmtCat = $db->prepare("SELECT id FROM categorias WHERE empresa_id = ? AND ativo = 1 ORDER BY id LIMIT 1");
+        $stmtCat = $db->prepare("SELECT id FROM categorias WHERE empresa_id = ? AND ativo = 1 AND (tipo = 'receita' OR tipo = 'ambos') ORDER BY id LIMIT 1");
         $stmtCat->execute([$empresaId]);
         $categoriaId = $stmtCat->fetchColumn();
         if (!$categoriaId) {

@@ -39,6 +39,7 @@ $empresaId  = (int)($currentUser['empresa_id'] ?? 0);
                 <li><a href="cnae_servicos_listar.php">Tipos de Serviços (CNAE)</a></li>
             </ul>
         </li>
+        <li><a href="faturas.php">Faturas</a></li>
         <li><a href="relatorios.php">Relatórios</a></li>
         <?php if (Permissao::tem('gerenciar_empresas') || Permissao::tem('gerenciar_usuarios')): ?>
         <li class="dropdown">

@@ -423,7 +423,6 @@ final class ContasReceberController
     public function gerarBoletoPdf(int $id): void
     {
         Auth::require();
-        Permissao::requer('visualizar', 'contas_receber.php');
         $empresaId = Auth::user()['empresa_id'];
         $db = Database::getConnection();
 

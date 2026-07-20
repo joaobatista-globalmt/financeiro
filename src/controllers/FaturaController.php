@@ -829,7 +829,6 @@ final class FaturaController
     public function relatorio(): void
     {
         Auth::require();
-        Permissao::requer('visualizar', 'relatorios.php');
         $empresaId = Auth::user()['empresa_id'];
         $db = Database::getConnection();
 
@@ -911,7 +910,6 @@ final class FaturaController
     public function relatorioPdf(): void
     {
         Auth::require();
-        Permissao::requer('visualizar', 'relatorios.php');
         $empresaId = Auth::user()['empresa_id'];
         $db = Database::getConnection();
 

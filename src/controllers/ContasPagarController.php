@@ -24,6 +24,20 @@ final class ContasPagarController
         $dataInicio   = $_GET['data_inicio']   ?? '';
         $dataFim      = $_GET['data_fim']      ?? '';
 
+        // Ordenacao por clique no cabecalho (whitelist rigoroso)
+        $sortColunas = [
+            'vencimento'  => 'cp.data_vencimento',
+            'descricao'   => 'cp.descricao',
+            'fornecedor'  => 'f.razao_social',
+            'categoria'   => 'cat.nome',
+            'valor'       => 'cp.valor',
+            'status'      => 'cp.status',
+        ];
+        $sort = $_GET['sort'] ?? '';
+        $dir  = strtolower($_GET['dir'] ?? 'asc');
+        if (!isset($sortColunas[$sort])) { $sort = ''; }
+        if ($dir !== 'asc' && $dir !== 'desc') { $dir = 'asc'; }
+
         $sql = '
             SELECT cp.*,
                    f.razao_social AS fornecedor_nome,
@@ -61,7 +75,11 @@ final class ContasPagarController
             $params[] = $dataFim;
         }
 
-        $sql .= ' ORDER BY cp.status, cp.data_vencimento ASC';
+        if ($sort !== '' && isset($sortColunas[$sort])) {
+            $sql .= ' ORDER BY ' . $sortColunas[$sort] . ' ' . strtoupper($dir) . ', cp.id ASC';
+        } else {
+            $sql .= ' ORDER BY cp.status ASC, cp.data_vencimento ASC';
+        }
 
         $db = Database::getConnection();
         $stmt = $db->prepare($sql);
@@ -84,6 +102,8 @@ final class ContasPagarController
                 'data_inicio'  => $dataInicio,
                 'data_fim'     => $dataFim,
             ],
+            'sort'          => $sort,
+            'dir'           => $dir,
         ]);
     }
 

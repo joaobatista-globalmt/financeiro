@@ -4,6 +4,24 @@
 /** @var array $categorias */
 /** @var array $resumo */
 /** @var array $filtros */
+/** @var string $sort */
+/** @var string $dir */
+
+// Helper: gera link de ordenacao preservando os filtros atuais
+$sortAtual = $sort ?? '';
+$dirAtual  = $dir  ?? 'asc';
+function sortLink(string $coluna, string $label, string $sortAtual, string $dirAtual, array $filtros, string $alignClass = ''): string {
+    $novaDir = ($sortAtual === $coluna && $dirAtual === 'asc') ? 'desc' : 'asc';
+    $params = $filtros;
+    $params['sort'] = $coluna;
+    $params['dir']  = $novaDir;
+    $url = 'contas_receber.php?' . http_build_query($params);
+    $seta = '';
+    if ($sortAtual === $coluna) {
+        $seta = $dirAtual === 'asc' ? ' <span class="sort-arrow">&#9650;</span>' : ' <span class="sort-arrow">&#9660;</span>';
+    }
+    return '<a href="' . htmlspecialchars($url) . '" class="sort-link' . ($sortAtual === $coluna ? ' active' : '') . '" style="' . ($alignClass ? 'float:right;' : '') . '">' . htmlspecialchars($label) . $seta . '</a>';
+}
 ?>
 <div class="page-header">
     <h1>💰 Contas a Receber</h1>
@@ -80,12 +98,12 @@
 <table class="table">
     <thead>
         <tr>
-            <th>Vencimento</th>
-            <th>Descrição</th>
-            <th>Cliente</th>
-            <th>Categoria</th>
-            <th class="text-right">Valor</th>
-            <th>Status</th>
+            <th><?= sortLink('vencimento', 'Vencimento', $sortAtual, $dirAtual, $filtros) ?></th>
+            <th><?= sortLink('descricao',  'Descrição',  $sortAtual, $dirAtual, $filtros) ?></th>
+            <th><?= sortLink('cliente',    'Cliente',    $sortAtual, $dirAtual, $filtros) ?></th>
+            <th><?= sortLink('categoria',  'Categoria',  $sortAtual, $dirAtual, $filtros) ?></th>
+            <th class="text-right"><?= sortLink('valor', 'Valor', $sortAtual, $dirAtual, $filtros, 'right') ?></th>
+            <th><?= sortLink('status',     'Status',     $sortAtual, $dirAtual, $filtros) ?></th>
             <th>Ações</th>
         </tr>
     </thead>
@@ -259,3 +277,9 @@ document.getElementById('modal-drilldown').addEventListener('click', function(e)
     if (e.target === this) fecharDrillDown();
 });
 </script>
+<style>
+.sort-link { color: inherit; text-decoration: none; cursor: pointer; user-select: none; }
+.sort-link:hover { color: #2563eb; }
+.sort-link.active { color: #2563eb; font-weight: 600; }
+.sort-arrow { font-size: 10px; margin-left: 4px; }
+</style>

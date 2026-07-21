@@ -30,6 +30,20 @@ final class ContasReceberController
         $dataInicio  = $_GET['data_inicio']  ?? '';
         $dataFim     = $_GET['data_fim']     ?? '';
 
+        // Ordenacao por clique no cabecalho (whitelist rigoroso)
+        $sortColunas = [
+            'vencimento'  => 'cr.data_vencimento',
+            'descricao'   => 'cr.descricao',
+            'cliente'     => 'c.razao_social',
+            'categoria'   => 'cat.nome',
+            'valor'       => 'cr.valor',
+            'status'      => 'cr.status',
+        ];
+        $sort = $_GET['sort'] ?? '';
+        $dir  = strtolower($_GET['dir'] ?? 'asc');
+        if (!isset($sortColunas[$sort])) { $sort = ''; }
+        if ($dir !== 'asc' && $dir !== 'desc') { $dir = 'asc'; }
+
         $sql = '
             SELECT cr.*,
                    c.razao_social AS cliente_nome,
@@ -67,7 +81,11 @@ final class ContasReceberController
             $params[] = $dataFim;
         }
 
-        $sql .= ' ORDER BY cr.status, cr.data_vencimento ASC';
+        if ($sort !== '' && isset($sortColunas[$sort])) {
+            $sql .= ' ORDER BY ' . $sortColunas[$sort] . ' ' . strtoupper($dir) . ', cr.id ASC';
+        } else {
+            $sql .= ' ORDER BY cr.status ASC, cr.data_vencimento ASC';
+        }
 
         $db = Database::getConnection();
         $stmt = $db->prepare($sql);
@@ -93,6 +111,8 @@ final class ContasReceberController
                 'data_inicio'  => $dataInicio,
                 'data_fim'     => $dataFim,
             ],
+            'sort'        => $sort,
+            'dir'         => $dir,
         ]);
     }
 
@@ -736,65 +756,25 @@ final class ContasReceberController
      */
     private function gerarBarcodePng(string $codigo, int $largura = 400, int $altura = 60): string
     {
-        if (!function_exists('imagecreate')) {
-            // GD nao disponivel - retorna placeholder
-            return '';
+        // Limpa e garante 44 chars (I25)
+        $codigo = preg_replace("/\D/", "", $codigo);
+        if (strlen($codigo) < 44) {
+            $codigo = str_pad($codigo, 44, "0", STR_PAD_LEFT);
         }
-        if (strlen($codigo) !== 44) {
-            return '';
+        $codigo = substr($codigo, 0, 44);
+        if (strlen($codigo) !== 44 || !class_exists(BarcodeGeneratorPNG::class)) {
+            return "";
         }
-
-        // Padrao Code 2 of 5 Interleaved (I25)
-        // Cada par de digitos gera 5 barras (2 grossas + 3 finas, ou vice-versa)
-        // Pattern do start: nnnn (bars narrow)
-        // Pattern do stop: wnn (1 wide + 2 narrow)
-        $patterns = [
-            '00' => '00110', '01' => '10010', '02' => '10110', '03' => '11010', '04' => '00110',
-            '05' => '01100', '06' => '11000', '07' => '10100', '08' => '11100', '09' => '10010',
-            '10' => '11000', '11' => '00110', '12' => '10010', '13' => '11010', '14' => '00110',
-            '15' => '01100', '16' => '11000', '17' => '10100', '18' => '11100', '19' => '10010',
-        ];
-        $start = '11000';  // narrow+narrow
-        $stop = '11000';   // narrow+narrow (para I25 eh 3 chars wide, mas simplificado aqui)
-
-        // Junta os pares: 44 digitos = 22 pares
-        $barcode = $start;
-        for ($i = 0; $i < 44; $i += 2) {
-            $par = substr($codigo, $i, 2);
-            // Mapeia pares 00-99 para pattern (simplificado)
-            $barcode .= $this->padraoI25((int)$par);
-        }
-        $barcode .= $stop;
-
-        // Calcula largura baseado no numero de barras
-        $numBarras = strlen($barcode);
-        $larguraBarra = max(1, (int)($largura / ($numBarras + 20)));  // +20 de margem
-
-        // Cria imagem
-        $img = imagecreate($largura, $altura);
-        $branco = imagecolorallocate($img, 255, 255, 255);
-        $preto = imagecolorallocate($img, 0, 0, 0);
-
-        // Desenha barras
-        $x = 10;
-        for ($i = 0; $i < $numBarras; $i++) {
-            if ($barcode[$i] === '1') {
-                imagefilledrectangle($img, $x, 5, $x + $larguraBarra - 1, $altura - 5, $preto);
-            }
-            $x += $larguraBarra;
+        try {
+            $gen = new BarcodeGeneratorPNG();
+            $png = $gen->getBarcode($codigo, $gen::TYPE_CODE_INTERLEAVED_2_OF_5, 3, $altura);
+            if ($png === false || strlen($png) < 100) { return ""; }
+            return "data:image/png;base64," . base64_encode($png);
+        } catch (\Throwable $e) {
+            error_log("[Boleto] picqer falhou: " . $e->getMessage());
+            return "";
         }
 
-        // Output via arquivo tmp (mais confiavel que ob_start/ob_get_clean)
-        $tmpFile = tempnam(sys_get_temp_dir(), 'bc_') . '.png';
-        imagepng($img, $tmpFile);
-        imagedestroy($img);
-        $png = file_get_contents($tmpFile);
-        @unlink($tmpFile);
-
-        if ($png === false || strlen($png) < 100) {
-            return '';
-        }
-        return 'data:image/png;base64,' . base64_encode($png);
     }
 
     /**

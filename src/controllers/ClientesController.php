@@ -223,7 +223,7 @@ final class ClientesController
             $duplicata = $stmtChk->fetch(PDO::FETCH_ASSOC);
             if ($duplicata) {
                 Flash::set('erro', 'Ja existe um cliente com este CPF/CNPJ nesta empresa: #' . $duplicata['id'] . ' - ' . $duplicata['razao_social']);
-                redirect('cliente_acao.php?acao=form' . ($idAtual ? '&id=' . $idAtual : ''));
+                redirect('cliente_form.php' . ($idAtual ? '?id=' . $idAtual : ''));
             }
         }
 

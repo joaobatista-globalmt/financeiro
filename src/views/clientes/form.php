@@ -35,40 +35,11 @@ $actionForm = 'cliente_salvar.php' . ($returnTo ? '?return=' . rawurlencode($ret
 <form method="post" action="<?= htmlspecialchars($actionForm) ?>" class="form" id="cliente-form">
     <input type="hidden" name="id" value="<?= (int)($cliente['id'] ?? 0) ?>">
 
-    <fieldset>
-        <legend>📋 Identificação</legend>
-        <div class="row">
-            <div class="form-group col-8">
-                <label>Razão Social / Nome *</label>
-                <input type="text" name="razao_social" required maxlength="200"
-                       value="<?= htmlspecialchars($cliente['razao_social'] ?? '') ?>">
-            </div>
-            <div class="form-group col-4">
-                <label>Tipo de Pessoa *</label>
-                <select name="tipo_pessoa" required>
-                    <?php $tp = $cliente['tipo_pessoa'] ?? 'J'; ?>
-                    <option value="J" <?= $tp === 'J' ? 'selected' : '' ?>>Jurídica (CNPJ)</option>
-                    <option value="F" <?= $tp === 'F' ? 'selected' : '' ?>>Física (CPF)</option>
-                </select>
-            </div>
-        </div>
-
-        <div class="row">
-            <div class="form-group col-8">
-                <label>Nome Fantasia / Apelido</label>
-                <input type="text" name="nome_fantasia" maxlength="100"
-                       value="<?= htmlspecialchars($cliente['nome_fantasia'] ?? '') ?>">
-            </div>
-            <div class="form-group col-4">
-                <label>CPF/CNPJ</label>
-                <input type="text" id="cpf_cnpj" name="cpf_cnpj" maxlength="18"
-                       inputmode="numeric"
-                       placeholder="00.000.000/0000-00"
-                       oninput="mascaraDoc(this)"
-                       value="<?= htmlspecialchars($cliente['cpf_cnpj'] ?? '') ?>">
-            </div>
-        </div>
-    </fieldset>
+<!-- (Fieldset "Identificacao" removido em 2026-07-22 - duplicado.
+     O correto eh o que esta dentro da ABA 1: DADOS (linha ~88).
+     O primeiro fieldset recebia os dados da BrasilAPI mas o navegador
+     submetia o DOIS input[name=razao_social] e o PHP pegava o ultimo (vazio),
+     causando "salva mas sem dados".) -->
 
 <!-- ============================================
      SISTEMA DE ABAS (FICHARIO) - 6 abas

@@ -37,7 +37,7 @@ $actionForm = 'cliente_salvar.php' . ($returnTo ? '?return=' . rawurlencode($ret
 
 <!-- (Fieldset "Identificacao" removido em 2026-07-22 - duplicado.
      O correto eh o que esta dentro da ABA 1: DADOS (linha ~88).
-     O primeiro fieldset recebia os dados da BrasilAPI mas o navegador
+     O primeiro fieldset recebia os dados da BrasilAPI mas o navegado
      submetia o DOIS input[name=razao_social] e o PHP pegava o ultimo (vazio),
      causando "salva mas sem dados".) -->
 
@@ -538,9 +538,18 @@ $actionForm = 'cliente_salvar.php' . ($returnTo ? '?return=' . rawurlencode($ret
     else mascaraCnpj(el);
   };
 
+  // Handler do change do select tipo_pessoa: limpa o campo (usuario
+  // pediu pra mudar o tipo, entao a mascara anterior nao serve mais).
   function onTipoChange(){
     inputDoc.value = '';
     setStatus('');
+    aplicarPlaceholder();
+  }
+
+  // Aplica placeholder/maxLength de acordo com o tipo. NAO limpa o valo
+  // (usado na carga inicial pra nao apagar o CNPJ que veio do banco
+  // quando estamos EDITANDO um cliente existente).
+  function aplicarPlaceholder(){
     if (getTipo() === 'F'){
       inputDoc.placeholder = '000.000.000-00';
       inputDoc.maxLength = 14;
@@ -607,8 +616,9 @@ $actionForm = 'cliente_salvar.php' . ($returnTo ? '?return=' . rawurlencode($ret
 
   inputDoc.addEventListener('blur', buscarCnpj);
   if (selTipo) selTipo.addEventListener('change', onTipoChange);
-  // Aplica placeholder/maxlength corretos na carga inicial
-  onTipoChange();
+  // Aplica placeholder/maxlength corretos na carga inicial SEM limpa
+  // o valor (importante no modo EDITAR onde o CNPJ ja vem do banco).
+  aplicarPlaceholder();
 })();
 </script>
 

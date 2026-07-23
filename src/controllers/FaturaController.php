@@ -330,12 +330,26 @@ final class FaturaController
                 // Pega o primeiro servico para herdar dia_vencimento e conta_bancaria
                 $primeiro = $grp['itens'][0];
 
-                // Calcula vencimento
-                $dia = (int)($primeiro['dia_vencimento'] ?? 0);
-                if ($dia < 1 || $dia > $diasMes) {
-                    $dia = min(15, $diasMes); // fallback: dia 15 (ou ultimo dia)
+                // Calcula vencimento respeitando tipo_vencimento do servico
+                // (cliente_servicos.tipo_vencimento: 'mes_corrente' | 'mes_seguinte' | null)
+                $tipoVenc = $primeiro['tipo_vencimento'] ?? null;
+                $mesVenc  = $mes;
+                if ($tipoVenc === 'mes_seguinte') {
+                    $mesVenc = date('Y-m', strtotime($mes . '-01 +1 month'));
                 }
-                $vencimento = sprintf('%s-%02d', $mes, $dia);
+                // 'mes_corrente' ou null => usa $mes da referencia (comportamento legado)
+
+                $dia = (int)($primeiro['dia_vencimento'] ?? 0);
+                $diasMesVenc = (int)date('t', strtotime($mesVenc . '-01'));
+                if ($dia < 1 || $dia > $diasMesVenc) {
+                    $dia = min(15, $diasMesVenc); // fallback: dia 15 (ou ultimo dia)
+                }
+                // Clamp final: garante que dia <= ultimo dia do mes de vencimento
+                // (ex: dia 31 num mes de 30 dias -> vira 30)
+                if ($dia > $diasMesVenc) {
+                    $dia = $diasMesVenc;
+                }
+                $vencimento = sprintf('%s-%02d', $mesVenc, $dia);
 
                 // Verifica se ja existe fatura pro (cliente, mes)
                 $stmtCheck = $db->prepare("

@@ -81,7 +81,7 @@ $actionForm = 'cliente_salvar.php' . ($returnTo ? '?return=' . rawurlencode($ret
             </div>
             <div class="form-group col-4">
                 <label>CPF/CNPJ</label>
-                <input type="text" id="cpf_cnpj" name="cpf_cnpj" maxlength="18" autocomplete="off" oninput="mascaraDoc(this)"
+                <input type="text" id="cpf_cnpj" name="cpf_cnpj" maxlength="18" autocomplete="off"
                        inputmode="numeric"
                        placeholder="00.000.000/0000-00"
                       
@@ -473,164 +473,7 @@ $actionForm = 'cliente_salvar.php' . ($returnTo ? '?return=' . rawurlencode($ret
 </script>
 
 
-<script>
-(function(){
-  const inputDoc  = document.getElementById('cpf_cnpj');
-  const selTipo   = document.querySelector('[name="tipo_pessoa"]');
-  if (!inputDoc) return;
 
-  function getTipo(){
-    return selTipo ? selTipo.value : 'J';
-  }
-
-  function setStatus(msg, cor){
-    let s = document.getElementById('cpf_cnpj-status');
-    if (!s){
-      s = document.createElement('small');
-      s.id = 'cpf_cnpj-status';
-      s.style.marginLeft = '8px';
-      s.style.fontWeight = '600';
-      inputDoc.parentNode.appendChild(s);
-    }
-    s.textContent = msg;
-    s.style.color = cor || '#666';
-  }
-
-  function setIfEmpty(name, val){
-    if (val === undefined || val === null || val === '') return;
-    const el = document.querySelector('[name="'+name+'"]');
-    if (el && !el.value.trim()) el.value = val;
-  }
-
-  function formatCep(c){
-    if (!c) return '';
-    c = String(c).replace(/\D/g,'').slice(0,8);
-    return c.replace(/^(\d{5})(\d)/, '$1-$2');
-  }
-
-  function formatPhone(p){
-    if (!p) return '';
-    p = String(p).replace(/\D/g,'').slice(0,11);
-    if (p.length === 11) return p.replace(/^(\d{2})(\d{5})(\d)/, '($1) $2-$3');
-    if (p.length === 10) return p.replace(/^(\d{2})(\d{4})(\d)/, '($1) $2-$3');
-    return p;
-  }
-
-  function mascaraCnpj(el){
-    let v = el.value.replace(/\D/g,'').slice(0,14);
-    v = v.replace(/^(\d{2})(\d)/, '$1.$2')
-         .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
-         .replace(/\.(\d{3})(\d)/, '.$1/$2')
-         .replace(/(\d{4})(\d)/, '$1-$2');
-    el.value = v;
-  }
-
-  function mascaraCpf(el){
-    let v = el.value.replace(/\D/g,'').slice(0,11);
-    v = v.replace(/^(\d{3})(\d)/, '$1.$2')
-         .replace(/^(\d{3})\.(\d{3})(\d)/, '$1.$2.$3')
-         .replace(/\.(\d{3})(\d)/, '.$1-$2');
-    el.value = v;
-  }
-
-  window.mascaraDoc = function(el){
-    if (getTipo() === 'F') mascaraCpf(el);
-    else mascaraCnpj(el);
-  };
-
-  // Handler do change do select tipo_pessoa: limpa o campo (usuario
-  // pediu pra mudar o tipo, entao a mascara anterior nao serve mais).
-  function onTipoChange(){
-    // Backup do handler inline do <select>. O handler inline ja
-    // faz o trabalho principal; isto aqui e belt+suspenders.
-    inputDoc.value = '';
-    setStatus('');
-    aplicarPlaceholder();
-  }
-
-  // Aplica placeholder/maxLength de acordo com o tipo. NAO limpa o valo
-  // (usado na carga inicial pra nao apagar o CNPJ que veio do banco
-  // quando estamos EDITANDO um cliente existente).
-  function aplicarPlaceholder(){
-    if (getTipo() === 'F'){
-      inputDoc.placeholder = '000.000.000-00';
-      inputDoc.maxLength = 14;
-    } else {
-      inputDoc.placeholder = '00.000.000/0000-00';
-      inputDoc.maxLength = 18;
-    }
-  }
-
-  // BrasilAPI: situacao_cadastral vem como CODIGO numerico da Receita Federal
-  const SITUACAO = {1:'NULA', 2:'ATIVA', 3:'SUSPENSA', 4:'INAPTA', 8:'BAIXADA'};
-
-  async function buscarCnpj(){
-    if (getTipo() !== 'J'){
-      setStatus('\u2139\uFE0F Busca BrasilAPI so para Pessoa Juridica.', '#6b7280');
-      return;
-    }
-    const cnpj = inputDoc.value.replace(/\D/g,'');
-    if (cnpj.length !== 14){
-      setStatus('');
-      return;
-    }
-    if (!window.confirm('Buscar dados do CNPJ na Receita Federal (BrasilAPI)?')){
-      return;
-    }
-    setStatus('\u{1F504} Consultando BrasilAPI...', '#1e40af');
-    try {
-      const r = await fetch('https://brasilapi.com.br/api/cnpj/v1/' + cnpj);
-      if (r.status === 404){
-        setStatus('\u274C CNPJ n\u00e3o encontrado na Receita.', '#dc2626');
-        return;
-      }
-      if (!r.ok){
-        setStatus('\u274C Erro ' + r.status + ' ao consultar.', '#dc2626');
-        return;
-      }
-      const d = await r.json();
-      console.log('[BrasilAPI]', d);
-
-      setIfEmpty('tipo_pessoa', 'J');  // CNPJ = Pessoa Juridica
-      setIfEmpty('razao_social',  d.razao_social || '');
-      setIfEmpty('nome_fantasia', d.nome_fantasia || d.razao_social || '');
-      setIfEmpty('cep',           formatCep(d.cep));
-      const end = [d.logradouro, d.numero].filter(Boolean).join(', ');
-      setIfEmpty('endereco',      end);
-      setIfEmpty('cidade',        d.municipio || '');
-      setIfEmpty('uf',            (d.uf || '').toUpperCase());
-      setIfEmpty('telefone',      formatPhone(d.ddd_telefone_1));
-      setIfEmpty('email',         d.email || '');
-
-      setStatus('\u2705 Dados preenchidos: ' + (d.razao_social || ''), '#15803d');
-
-      // BrasilAPI retorna situacao_cadastral como NUMERO (codigo da Receita Federal).
-      // Tabela: 1=NULA, 2=ATIVA, 3=SUSPENSA, 4=INAPTA, 8=BAIXADA
-      const sitCod = d.situacao_cadastral;
-      const sitDesc = SITUACAO[sitCod] || ('CODIGO ' + sitCod);
-      if (sitCod !== 2 && sitCod !== undefined && sitCod !== null){
-        window.alert('\u26A0\uFE0F ATENCAO: CNPJ com situacao cadastral = ' + sitDesc + ' (codigo ' + sitCod + ')\n\nA empresa pode estar impedida de emitir notas ou operar.');
-      }
-    } catch (e){
-      setStatus('\u274C Falha na consulta: ' + e.message, '#dc2626');
-    }
-  }
-
-  inputDoc.addEventListener('blur', buscarCnpj);
-  // Usa 'input' em vez de 'change' (dispara no momento da selecao,
-  // antes do blur do campo, evitando que mascara antiga fique visivel).
-  // Belt+suspenders: registra 'input' E 'change' (alguns browsers
-  // so disparam um dos dois em <select>). O handler inline no HTML
-  // ja cobre o caso principal.
-  if (selTipo) {
-    selTipo.addEventListener('input', onTipoChange);
-    selTipo.addEventListener('change', onTipoChange);
-  }
-  // Aplica placeholder/maxlength corretos na carga inicial SEM limpa
-  // o valor (importante no modo EDITAR onde o CNPJ ja vem do banco).
-  aplicarPlaceholder();
-})();
-</script>
 
 <script>
 function addEmail(tipo) {
@@ -697,4 +540,4 @@ legend {
     border-top: 1px solid var(--color-border);
 }
 </style>
-<script src="/financeiro/assets/mascara_cpf_cnpj.js?v=20260723"></script>
+<script src="/financeiro/assets/mascara_cpf_cnpj.js?v=20260723_v2_v2"></script>

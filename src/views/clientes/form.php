@@ -65,7 +65,7 @@ $actionForm = 'cliente_salvar.php' . ($returnTo ? '?return=' . rawurlencode($ret
             </div>
             <div class="form-group col-4">
                 <label>Tipo de Pessoa *</label>
-                <select name="tipo_pessoa" required>
+                <select name="tipo_pessoa" required onchange="var d=document.getElementById('cpf_cnpj');if(d){d.value='';d.placeholder=(this.value==='F'?'000.000.000-00':'00.000.000/0000-00');d.maxLength=(this.value==='F'?14:18);}">
                     <?php $tp = $cliente['tipo_pessoa'] ?? 'J'; ?>
                     <option value="J" <?= $tp === 'J' ? 'selected' : '' ?>>Jurídica (CNPJ)</option>
                     <option value="F" <?= $tp === 'F' ? 'selected' : '' ?>>Física (CPF)</option>
@@ -84,7 +84,7 @@ $actionForm = 'cliente_salvar.php' . ($returnTo ? '?return=' . rawurlencode($ret
                 <input type="text" id="cpf_cnpj" name="cpf_cnpj" maxlength="18"
                        inputmode="numeric"
                        placeholder="00.000.000/0000-00"
-                       oninput="mascaraDoc(this)"
+                       oninput="var s=document.querySelector(' + chr(39) + 'select[name=' + chr(34) + 'tipo_pessoa' + chr(34) + ']' + chr(39) + ');var t=s?s.value:' + chr(39) + 'J' + chr(39) + ';var v=this.value.replace(/\D/g,' + chr(39) + '' + chr(39) + ');if(t===' + chr(39) + 'F' + chr(39) + '){v=v.slice(0,11);v=v.replace(/^(\d{3})(\d)/,' + chr(39) + '$1.$2' + chr(39) + ').replace(/^(\d{3})\.(\d{3})(\d)/,' + chr(39) + '$1.$2.$3' + chr(39) + ').replace(/\.(\d{3})(\d)/,' + chr(39) + '.$1-$2' + chr(39) + ');}else{v=v.slice(0,14);v=v.replace(/^(\d{2})(\d)/,' + chr(39) + '$1.$2' + chr(39) + ').replace(/^(\d{2})\.(\d{3})(\d)/,' + chr(39) + '$1.$2.$3' + chr(39) + ').replace(/\.(\d{3})(\d)/,' + chr(39) + '.$1/$2' + chr(39) + ').replace(/(\d{4})(\d)/,' + chr(39) + '$1-$2' + chr(39) + ');}this.value=v;"
                        value="<?= htmlspecialchars($cliente['cpf_cnpj'] ?? '') ?>">
             </div>
         </div>
@@ -541,6 +541,8 @@ $actionForm = 'cliente_salvar.php' . ($returnTo ? '?return=' . rawurlencode($ret
   // Handler do change do select tipo_pessoa: limpa o campo (usuario
   // pediu pra mudar o tipo, entao a mascara anterior nao serve mais).
   function onTipoChange(){
+    // Backup do handler inline do <select>. O handler inline ja
+    // faz o trabalho principal; isto aqui e belt+suspenders.
     inputDoc.value = '';
     setStatus('');
     aplicarPlaceholder();
@@ -615,7 +617,15 @@ $actionForm = 'cliente_salvar.php' . ($returnTo ? '?return=' . rawurlencode($ret
   }
 
   inputDoc.addEventListener('blur', buscarCnpj);
-  if (selTipo) selTipo.addEventListener('change', onTipoChange);
+  // Usa 'input' em vez de 'change' (dispara no momento da selecao,
+  // antes do blur do campo, evitando que mascara antiga fique visivel).
+  // Belt+suspenders: registra 'input' E 'change' (alguns browsers
+  // so disparam um dos dois em <select>). O handler inline no HTML
+  // ja cobre o caso principal.
+  if (selTipo) {
+    selTipo.addEventListener('input', onTipoChange);
+    selTipo.addEventListener('change', onTipoChange);
+  }
   // Aplica placeholder/maxlength corretos na carga inicial SEM limpa
   // o valor (importante no modo EDITAR onde o CNPJ ja vem do banco).
   aplicarPlaceholder();

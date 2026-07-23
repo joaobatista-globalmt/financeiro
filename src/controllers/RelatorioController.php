@@ -111,7 +111,13 @@ final class RelatorioController
                 return;
             case 'fluxo_caixa':
                 $dados = $this->relatorioFluxoCaixa($empresaId, $dataInicio, $dataFim);
-                break;
+                layout('Relatório: Fluxo de Caixa', 'relatorios/show_fluxo_caixa.php', [
+                    'tipo'       => $tipo,
+                    'dados'      => $dados,
+                    'dataInicio' => $dataInicio,
+                    'dataFim'    => $dataFim,
+                ]);
+                return;
             case 'atrasadas':
                 $dados = $this->relatorioAtrasadas($empresaId);
                 layout('Relatório: ' . $tipo, 'relatorios/show_atrasadas.php', [

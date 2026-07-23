@@ -81,10 +81,10 @@ $actionForm = 'cliente_salvar.php' . ($returnTo ? '?return=' . rawurlencode($ret
             </div>
             <div class="form-group col-4">
                 <label>CPF/CNPJ</label>
-                <input type="text" id="cpf_cnpj" name="cpf_cnpj" maxlength="18" autocomplete="off"
+                <input type="text" id="cpf_cnpj" name="cpf_cnpj" maxlength="18" autocomplete="off" oninput="mascaraDoc(this)"
                        inputmode="numeric"
                        placeholder="00.000.000/0000-00"
-                       oninput="var s=document.querySelector(' + chr(39) + 'select[name=' + chr(34) + 'tipo_pessoa' + chr(34) + ']' + chr(39) + ');var t=s?s.value:' + chr(39) + 'J' + chr(39) + ';var v=this.value.replace(/\D/g,' + chr(39) + '' + chr(39) + ');if(t===' + chr(39) + 'F' + chr(39) + '){v=v.slice(0,11);v=v.replace(/^(\d{3})(\d)/,' + chr(39) + '$1.$2' + chr(39) + ').replace(/^(\d{3})\.(\d{3})(\d)/,' + chr(39) + '$1.$2.$3' + chr(39) + ').replace(/\.(\d{3})(\d)/,' + chr(39) + '.$1-$2' + chr(39) + ');}else{v=v.slice(0,14);v=v.replace(/^(\d{2})(\d)/,' + chr(39) + '$1.$2' + chr(39) + ').replace(/^(\d{2})\.(\d{3})(\d)/,' + chr(39) + '$1.$2.$3' + chr(39) + ').replace(/\.(\d{3})(\d)/,' + chr(39) + '.$1/$2' + chr(39) + ').replace(/(\d{4})(\d)/,' + chr(39) + '$1-$2' + chr(39) + ');}this.value=v;"
+                      
                        value="<?= htmlspecialchars($cliente['cpf_cnpj'] ?? '') ?>">
             </div>
         </div>
@@ -697,3 +697,4 @@ legend {
     border-top: 1px solid var(--color-border);
 }
 </style>
+<script src="/financeiro/assets/mascara_cpf_cnpj.js?v=20260723"></script>

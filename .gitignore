@@ -13,3 +13,8 @@ _build_entries.js
 backups/diario/*.sql.gz
 backups/backup_diario.log
 backups/cron.log
+
+# Backups temporarios (movidos para archives/bak_YYYY-MM-DD/)
+*.bak.*
+*.b64
+archives/

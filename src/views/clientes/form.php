@@ -540,4 +540,4 @@ legend {
     border-top: 1px solid var(--color-border);
 }
 </style>
-<script src="/financeiro/assets/mascara_cpf_cnpj.js?v=20260723_v2_v2"></script>
+<script src="/financeiro/assets/mascara_cpf_cnpj.js?v=20260723_v2_v2_v2"></script>

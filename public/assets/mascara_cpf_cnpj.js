@@ -1,4 +1,4 @@
-// mascara_cpf_cnpj.js (v2 - 20260723-1400, com debug logs) (v2 - 20260723-1400, com debug logs)
+// mascara_cpf_cnpj.js (v2 - 20260723-1400, com debug logs) (v2 - 20260723-1400, com debug logs) (v2 - 20260723-1400, com debug logs)
 // Mascara dinamica CPF/CNPJ baseada no select tipo_pessoa.
 // Arquivo separado em /assets/ pra evitar problemas de escape inline
 // e cache agressivo do navegador. Bypass com ?v=timestamp no src.
@@ -70,6 +70,7 @@
     inputDoc.placeholder = '00.000.000/0000-00';
     inputDoc.maxLength = 18;
   }
+console.log('[mascara_cpf_cnpj] script carregado, inputDoc=', inputDoc, 'selTipo=', selTipo);
 console.log('[mascara_cpf_cnpj] script carregado, inputDoc=', inputDoc, 'selTipo=', selTipo);
 console.log('[mascara_cpf_cnpj] script carregado, inputDoc=', inputDoc, 'selTipo=', selTipo);
 })();
